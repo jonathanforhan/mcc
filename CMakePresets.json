@@ -19,8 +19,7 @@
             "name": "msvc-base",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "cl.exe",
-                "CMAKE_CXX_COMPILER": "cl.exe"
+                "CMAKE_C_COMPILER": "cl.exe"
             },
             "condition": {
                 "type": "equals",
@@ -32,16 +31,14 @@
             "name": "gcc-base",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "gcc",
-                "CMAKE_CXX_COMPILER": "g++"
+                "CMAKE_C_COMPILER": "gcc"
             }
         },
         {
             "name": "clang-base",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "clang",
-                "CMAKE_CXX_COMPILER": "clang++"
+                "CMAKE_C_COMPILER": "clang"
             }
         },
         {

@@ -6,14 +6,26 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
+# MCC Lib
+file(GLOB_RECURSE MCC_LIB_SOURCES "lib/*.c")
 
-add_executable(mcc ${C_SOURCES})
+add_library(mcc_lib SHARED ${MCC_LIB_SOURCES})
+target_include_directories(mcc_lib PUBLIC include)
 
 if (MSVC)
-    set_target_properties(mcc PROPERTIES COMPILE_FLAGS "${CMAKE_CXX_FLAGS} /W4")
+    set(MCC_FLAGS "${CMAKE_C_FLAGS} /W4")
 else ()
-    set_target_properties(mcc PROPERTIES COMPILE_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
+    set(MCC_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic")
 endif ()
+set_target_properties(mcc_lib PROPERTIES COMPILE_FLAGS ${MCC_FLAGS})
 
-target_include_directories(mcc PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+# MCC APP
+add_executable(mcc "mcc/mcc.c")
+target_link_libraries(mcc PRIVATE mcc_lib)
+
+# MCC Tests
+enable_testing()
+add_subdirectory("test")
+
+file(GLOB TEST_FILES "test/*.test.c")
+file(COPY ${TEST_FILES} DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")
