@@ -17,5 +17,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    TokenStringDestroy(&ts);
+
     return 1;
 }

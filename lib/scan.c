@@ -136,8 +136,10 @@ static Result _ParseConstant(FILE* fptr, char c, Token* token) {
     }
 
     token->data = malloc(sizeof(number)); // freed on TokenStringDestroy
+    assert(token->data != NULL);          // TODO
     memcpy(token->data, &number, sizeof(number));
 
+    StringDestroy(s);
     return SUCCESS;
 
 abort:
