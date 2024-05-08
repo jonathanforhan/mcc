@@ -10,8 +10,10 @@ typedef struct {
 } TestElement;
 
 void TestDestructor(void* vp) {
-    TestElement* test_elem = vp;
-    free(test_elem->mem);
+    if (vp != NULL) {
+        TestElement* test_elem = vp;
+        free(test_elem->mem);
+    }
 }
 
 void TestCreate(void) {
@@ -20,6 +22,7 @@ void TestCreate(void) {
     assert((vector = VectorCreate(0, sizeof(TestElement), NULL)));
     assert(VectorLength(vector) == 0);
     assert(VectorCapacity(vector) == 0);
+    assert(VectorElementSize(vector) == sizeof(TestElement));
     VectorDestroy(vector);
 
     assert((vector = VectorCreate(0, sizeof(TestElement), TestDestructor)));
@@ -45,6 +48,7 @@ void TestReserve(void) {
     assert((vector = VectorCreate(0, sizeof(TestElement), NULL)));
     assert((vector = VectorReserve(vector, 100)));
     assert(VectorLength(vector) == 0);
+    assert(VectorCapacity(vector) >= 100);
     VectorDestroy(vector);
 }
 
@@ -55,9 +59,6 @@ void TestPush(void) {
     assert((vector = VectorPush(vector, &(TestElement){.size = 100, .mem = malloc(100)})));
     assert((vector = VectorPush(vector, &(TestElement){.size = 200, .mem = malloc(200)})));
     assert((vector = VectorPush(vector, &(TestElement){.size = 300, .mem = malloc(300)})));
-    printf("%llu\n", ((TestElement*)vector)[0].size);
-    printf("%llu\n", ((TestElement*)vector)[1].size);
-    printf("%llu\n", ((TestElement*)vector)[2].size);
     assert(((TestElement*)vector)[0].size == 100);
     assert(((TestElement*)vector)[1].size == 200);
     assert(((TestElement*)vector)[2].size == 300);
@@ -83,22 +84,30 @@ void TestPush(void) {
     VectorDestroy(vector);
 }
 
-void TestPop(void) {}
+void TestPop(void) {
+    Vector vector;
 
-void TestLength(void) {}
+    assert((vector = VectorCreate(0, sizeof(TestElement), TestDestructor)));
+    assert((vector = VectorPush(vector, &(TestElement){.size = 0})));
+    assert((vector = VectorPush(vector, &(TestElement){.size = 1})));
+    assert((vector = VectorPush(vector, &(TestElement){.size = 2})));
+    assert((vector = VectorPush(vector, &(TestElement){.size = 3})));
+    assert((vector = VectorPush(vector, &(TestElement){.size = 4})));
+    assert((vector = VectorPop(vector)));
+    assert((vector = VectorPop(vector)));
+    assert((vector = VectorPop(vector)));
+    assert(VectorLength(vector) == 2);
+    assert(((TestElement*)vector)[0].size == 0);
+    assert(((TestElement*)vector)[1].size == 1);
 
-void TestCapacity(void) {}
-
-void TestElementSize(void) {}
+    VectorDestroy(vector);
+}
 
 int main(void) {
     TestCreate();
     TestReserve();
     TestPush();
-    // TestPop();
-    // TestLength();
-    // TestCapacity();
-    // TestElementSize();
+    TestPop();
 
     return 0;
 }
