@@ -1,19 +1,19 @@
-#include "types/string.h"
+#include "String.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define HEADER_SIZE 8
-#define PADDING (HEADER_SIZE + 1)
 
 typedef struct _StringImpl {
     uint32_t size;
     uint32_t capacity;
 } _StringImpl;
 
-#define GET_IMPL(_S) ((_StringImpl*)(((char*)_S) - 8))
-#define GET_STRING(_Impl) (((char*)_Impl) + 8)
+#define HEADER_SIZE (sizeof(_StringImpl))
+#define PADDING (HEADER_SIZE + sizeof(char))
+
+#define GET_IMPL(_S) ((_StringImpl*)(((char*)_S) - HEADER_SIZE))
+#define GET_STRING(_Impl) (((char*)_Impl) + HEADER_SIZE)
 
 static _StringImpl* _Realloc(_StringImpl* impl, uint32_t n) {
     assert(impl != NULL);

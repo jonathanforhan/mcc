@@ -4,14 +4,7 @@
 extern "C" {
 #endif
 
-typedef enum Result {
-    SUCCESS       = 0,
-    IO_FAILURE    = 1,
-    OUT_OF_MEMORY = 2,
-    FAILURE       = 0xffff,
-} Result;
-
-void MCC_Initialize(void);
+void InitializeMCC(void);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-/// @file string.h
+/// @file String.h
 /// @brief String class used in MCC
 ///
 /// Layout
@@ -29,7 +29,7 @@ String StringCreate(const char* str, uint32_t reserve);
 /// @param self
 void StringDestroy(String self);
 
-/// @brief Reserve `size` bytes, this function WILL allocate memory
+/// @brief Reserve `size` bytes, this function WILL allocate memory, unless size == capacity
 /// @param self
 /// @param size number of bytes to allocate, equivalent to number of chars CAN be less than size
 /// @return returns NULL on error, otherwise is a pointer to String
@@ -57,7 +57,7 @@ String StringAppend(String self, const char* other);
 /// @return returns NULL on error, otherwise is a pointer to a new String
 String StringCopy(String self);
 
-/// @brief Trim String to scecified size DOES NOT deallocate
+/// @brief Trim String to specified size DOES NOT deallocate
 /// @param self
 /// @param n number of elements to trim
 /// @return returns a pointer to String

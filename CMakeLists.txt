@@ -20,12 +20,9 @@ endif ()
 set_target_properties(mcc_lib PROPERTIES COMPILE_FLAGS ${MCC_FLAGS})
 
 # MCC APP
-add_executable(mcc "mcc/mcc.c")
-target_link_libraries(mcc PRIVATE mcc_lib)
+# add_executable(mcc "mcc/mcc.c")
+# target_link_libraries(mcc PRIVATE mcc_lib)
 
 # MCC Tests
 enable_testing()
 add_subdirectory("test")
-
-file(GLOB TEST_FILES "test/*.test.c")
-file(COPY ${TEST_FILES} DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")

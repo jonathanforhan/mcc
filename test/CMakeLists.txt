@@ -1,6 +1,6 @@
 set(TESTS
-    constant
-    string
+    String
+    Vector
 )
 
 foreach(TEST IN LISTS TESTS)

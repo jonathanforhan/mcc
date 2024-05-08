@@ -1,7 +1,20 @@
 #pragma once
 
+/// @file Token.h
+/// @brief Describes the TokenTypes used or tokenization as well as the structure of a Token
+/// Each TokenType will be part of a group
+/// - Keyword
+/// - Identifier
+/// - Constant
+/// - String-Literal
+/// - Punctuator
+/// see ISO/IEC 9899:1999 section 6.4.1
+///
+/// These groups will have a certain bit to mark them as such in the Token
+/// there is also a bit for describing a malformed Token
+
 #include <stdint.h>
-#include "mcc.h"
+#include "String.h"
 
 #define TOKEN_KEYWORD_BIT 0x0400
 #define TOKEN_IDENTIFIER_BIT 0x0800
@@ -10,10 +23,11 @@
 #define TOKEN_PUNCTUATOR_BIT 0x4000
 #define TOKEN_MALFORMED_BIT 0x8000
 
+/// @brief Type of Token, marked will group bits
 typedef enum TokenType {
     TOKEN_UNKNOWN = 0,
 
-    //=== KEYWORDS ===//
+    // Keywords
 
     TOKEN_AUTO       = TOKEN_KEYWORD_BIT | 0x01,
     TOKEN_BREAK      = TOKEN_KEYWORD_BIT | 0x02,
@@ -53,11 +67,11 @@ typedef enum TokenType {
     TOKEN_INLINE     = TOKEN_KEYWORD_BIT | 0x24,
     TOKEN_RESTRICT   = TOKEN_KEYWORD_BIT | 0x25,
 
-    //=== INDENTIFIERS ===//
+    // Indentifiers
 
     TOKEN_INDENTIFIER = 0x0801,
 
-    //=== CONSTANTS ===//
+    // Constants
 
     TOKEN_INTEGER_CONSTANT        = TOKEN_CONSTANT_BIT | 0x01,
     TOKEN_FLOATING_CONSTANT       = TOKEN_CONSTANT_BIT | 0x02,
@@ -65,12 +79,12 @@ typedef enum TokenType {
     TOKEN_CHARACTER_CONSTANT      = TOKEN_CONSTANT_BIT | 0x04,
     TOKEN_WIDE_CHARACTER_CONSTANT = TOKEN_CONSTANT_BIT | 0x05,
 
-    //=== STRING-LITERALS ===//
+    // String-Literals
 
     TOKEN_STRING_LITERAL      = TOKEN_STRING_LITERAL_BIT | 0x01,
     TOKEN_WIDE_STRING_LITERAL = TOKEN_STRING_LITERAL_BIT | 0x02,
 
-    //=== PUNCTUATORS ===//
+    // Punctuators
 
     TOKEN_BRACKET_LEFT               = TOKEN_PUNCTUATOR_BIT | 0x01, // [
     TOKEN_BRACKET_RIGHT              = TOKEN_PUNCTUATOR_BIT | 0x02, // ]
@@ -130,7 +144,7 @@ typedef enum TokenType {
     TOKEN_MULTI_LINE_COMMENT_BEGIN   = TOKEN_PUNCTUATOR_BIT | 0x38, // /*
     TOKEN_MULTI_LINE_COMMENT_END     = TOKEN_PUNCTUATOR_BIT | 0x39, // */
 
-    //=== MALFORMED TOKENS ===//
+    // Malformed Tokens
 
     TOKEN_MALFORMED_KEYWORD        = TOKEN_MALFORMED_BIT | TOKEN_KEYWORD_BIT,
     TOKEN_MALFORMED_IDENTIFIER     = TOKEN_MALFORMED_BIT | TOKEN_IDENTIFIER_BIT,
@@ -139,27 +153,19 @@ typedef enum TokenType {
     TOKEN_MALFORMED_PUNCTUATOR     = TOKEN_MALFORMED_BIT | TOKEN_PUNCTUATOR_BIT,
 } TokenType;
 
+/// @brief Token to be used in Tokenization and part of TokenVector
 typedef struct Token {
+    /// @brief type of Token
     TokenType type;
 
-    // keyword          Token.data : NULL
-    // identifier       Token.data : String*
-    // constant         Token.data : uint64_t*
-    // string literal   Token.data : String*
-    // punctuator       Token.data : NULL
-    void* data;
+    /// @brief May be different depending on the corresponding type, some types dont require data
+    /// keyword          Token.data : NONE
+    /// identifier       Token.data : str
+    /// constant         Token.data : num
+    /// string literal   Token.data : str
+    /// punctuator       Token.data : NONE
+    union {
+        String str;
+        uint64_t num;
+    } data;
 } Token;
-
-typedef struct TokenString {
-    uint32_t size;
-    uint32_t capacity;
-    Token* tokens;
-} TokenString;
-
-TokenString TokenStringCreate(void);
-
-void TokenStringDestroy(TokenString* self);
-
-Result TokenStringAppend(TokenString* self, Token token);
-
-Result TokenStringEmplace(TokenString* self, TokenType type, void* data);
