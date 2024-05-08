@@ -1,5 +1,6 @@
 set(TESTS
     constant
+    string
 )
 
 foreach(TEST IN LISTS TESTS)

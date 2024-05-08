@@ -8,8 +8,8 @@
 #include <string.h>
 #include "log.h"
 #include "mcc.h"
-#include "str.h"
 #include "token.h"
+#include "types/string.h"
 
 static char _Next(FILE* fptr) {
     int c = fgetc(fptr);
@@ -49,7 +49,7 @@ static Result _ParseConstant(FILE* fptr, char c, Token* token) {
     int iter        = 0;
     bool run        = true;
 
-    String* s = StringCreate();
+    String s = StringCreate(NULL, 0);
 
     do {
         switch (tolower(c)) {
@@ -118,7 +118,7 @@ static Result _ParseConstant(FILE* fptr, char c, Token* token) {
         }
 
         if (run) {
-            StringAppend(s, c);
+            StringPush(s, c);
             c = _Next(fptr);
             iter++;
         } else {
@@ -128,10 +128,10 @@ static Result _ParseConstant(FILE* fptr, char c, Token* token) {
 
     // TODO strto(*) is undesirable, write own function
     if (floating_point) {
-        *((double*)&number) = strtod(s->data, NULL);
+        *((double*)&number) = strtod(s, NULL);
         token->type         = TOKEN_FLOATING_CONSTANT;
     } else {
-        number      = strtoull(s->data, NULL, radix);
+        number      = strtoull(s, NULL, radix);
         token->type = TOKEN_INTEGER_CONSTANT;
     }
 
