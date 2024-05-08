@@ -60,6 +60,20 @@ void TestReserve(void) {
     StringDestroy(str);
 }
 
+void TestClear(void) {
+    String str;
+
+    assert((str = StringCreate(cstr, sizeof(cstr) - 1)));
+    assert((str = StringClear(str)));
+    assert(StringLength(str) == 0);
+    assert(strcmp(str, "") == 0);
+    assert((str = StringAppend(str, "Hi")));
+    assert(StringLength(str) == 2);
+    assert(strcmp(str, "Hi") == 0);
+
+    StringDestroy(str);
+}
+
 void TestPush(void) {
     String str;
 
@@ -143,6 +157,7 @@ void TestShrink(void) {
 int main(void) {
     TestCreate();
     TestReserve();
+    TestClear();
     TestPush();
     TestPop();
     TestAppend();

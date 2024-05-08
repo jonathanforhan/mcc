@@ -45,6 +45,11 @@ inline void VectorDestroy(Vector self);
 /// @return returns NULL on error, otherwise points to allocated block
 inline Vector VectorReserve(Vector self, uint32_t size);
 
+/// @brief Clear all elements in Vector
+/// @param self
+/// @return returns NULL on error, otherwise is a pointer to String
+inline Vector VectorClear(Vector self);
+
 /// @brief Push an element via memcpy, this function MAY allocate memory
 /// @param self
 /// @param elem element to copy
@@ -87,6 +92,12 @@ struct __VectorImpl* __VectorRealloc(struct __VectorImpl* impl, uint32_t n) {
 
     if (n == impl->capacity)
         return impl;
+
+    if (n < impl->size) {
+        for (uint32_t i = n; i < impl->size; i++)
+            if (impl->destructor != NULL)
+                impl->destructor(((uint8_t*)__VECTOR_GET_VECTOR(impl)) + (i * impl->elem_size));
+    }
 
     struct __VectorImpl* new_impl;
 
@@ -145,6 +156,21 @@ Vector VectorReserve(Vector self, uint32_t size) {
     return __VECTOR_GET_VECTOR(impl);
 }
 
+Vector VectorClear(Vector self) {
+    assert(self != NULL);
+
+    struct __VectorImpl* impl = __VECTOR_GET_IMPL(self);
+    uint8_t* vector           = __VECTOR_GET_VECTOR(impl);
+
+    for (uint32_t i = 0; i < impl->size; i++)
+        if (impl->destructor != NULL)
+            impl->destructor(vector + (i * impl->elem_size));
+
+    impl->size = 0;
+
+    return vector;
+}
+
 Vector VectorPush(Vector self, void* elem) {
     assert(self != NULL && elem != NULL);
 
@@ -168,7 +194,7 @@ Vector VectorPop(Vector self) {
     struct __VectorImpl* impl = __VECTOR_GET_IMPL(self);
 
     if (impl->destructor != NULL)
-        impl->destructor(((uint8_t*)self) + (impl->size * impl->elem_size));
+        impl->destructor(((uint8_t*)self) + ((impl->size - 1) * impl->elem_size));
 
     impl->size--;
 

@@ -38,6 +38,11 @@ inline void StringDestroy(String self);
 /// @return returns NULL on error, otherwise is a pointer to String
 inline String StringReserve(String self, uint32_t size);
 
+/// @brief Clear all chars in String
+/// @param self
+/// @return returns NULL on error, otherwise is a pointer to String
+inline String StringClear(String self);
+
 /// @brief Push a char to String, this function MAY allocate memory
 /// @param self
 /// @param c char to append
@@ -153,6 +158,18 @@ String StringReserve(String self, uint32_t size) {
         impl->size = size;
 
     char* string = __STRING_GET_STRING(impl);
+
+    string[impl->size] = '\0';
+    return string;
+}
+
+String StringClear(String self) {
+    assert(self != NULL);
+
+    struct __StringImpl* impl = __STRING_GET_IMPL(self);
+    char* string              = __STRING_GET_STRING(impl);
+
+    impl->size = 0;
 
     string[impl->size] = '\0';
     return string;

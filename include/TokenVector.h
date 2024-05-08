@@ -11,7 +11,7 @@ typedef const Token* TokenVector;
 void __TokenVectorDestructor(void* vp) {
     if (vp != NULL) {
         Token* token = vp;
-        if ((token->type & (TOKEN_IDENTIFIER_BIT | TOKEN_STRING_LITERAL_BIT)))
+        if (token->type & (TOKEN_IDENTIFIER_BIT | TOKEN_STRING_LITERAL_BIT))
             StringDestroy(token->data.str);
     }
 }
