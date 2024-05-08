@@ -30,7 +30,7 @@
 typedef const void* Vector;
 
 /// @brief Create a new Vector
-/// @param reserve initial amount of bytes to reserve
+/// @param reserve initial amount of elements to reserve
 /// @param elem_size size of element
 /// @return returns NULL on error, otherwise points to allocated block
 inline Vector VectorCreate(uint32_t reserve, uint32_t elem_size, void (*destructor)(void*));
@@ -39,7 +39,7 @@ inline Vector VectorCreate(uint32_t reserve, uint32_t elem_size, void (*destruct
 /// @param self
 inline void VectorDestroy(Vector self);
 
-/// @brief Reserve `size` bytes, this function WILL allocate memory, unless size == capacity
+/// @brief Reserve `size` elements, this function WILL allocate memory, unless size == capacity
 /// @param self
 /// @param size number of elements to allocate, CANNOT be less than size
 /// @return returns NULL on error, otherwise points to allocated block
