@@ -7,5 +7,5 @@
 
 /// @brief Tokenize a C file
 /// @param filepath path to file
-/// @return returns NULL on error, otherwise a Vector of Tokens
-TokenVector Tokenize(const char* filepath);
+/// @return returns false on error, true on success
+bool Tokenize(const char* filepath, TokenVector* token_vector);

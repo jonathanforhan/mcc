@@ -231,16 +231,16 @@ static ssize_t _ParseConstant(String str, Token* token) {
 
     //--- TODO
 
-    printf("[");
-    for (i = 0; i < num; i++)
-        putc(str[i], stdout);
-    printf("][");
-    for (; i < post; i++)
-        putc(str[i], stdout);
-    printf("][");
-    for (; i < StringLength(str); i++)
-        putc(str[i], stdout);
-    printf("]\n");
+    // printf("[");
+    // for (i = 0; i < num; i++)
+    //     putc(str[i], stdout);
+    // printf("][");
+    // for (; i < post; i++)
+    //     putc(str[i], stdout);
+    // printf("][");
+    // for (; i < StringLength(str); i++)
+    //     putc(str[i], stdout);
+    // printf("]\n");
 
     //--- TODO
 
@@ -257,11 +257,10 @@ abort:
 // static bool _ParseKeywordOrIdentifier(void) { return true; }
 // static bool _ParsePunctuator(void) { return true; }
 
-TokenVector Tokenize(const char* filepath) {
+bool Tokenize(const char* filepath, TokenVector* token_vector) {
     assert(filepath);
 
-    FILE* fptr               = NULL;
-    TokenVector token_vector = NULL;
+    FILE* fptr = NULL;
     Token token;
     String buf = NULL;
     char c, prev, peek;
@@ -271,9 +270,6 @@ TokenVector Tokenize(const char* filepath) {
         LOG_ERROR("unable to open file %s", filepath);
         goto abort;
     }
-
-    if (!(token_vector = TokenVectorCreate(sizeof(size_t))))
-        goto abort;
 
     if (!(buf = StringCreate(NULL, sizeof(size_t))))
         goto abort;
@@ -308,7 +304,7 @@ TokenVector Tokenize(const char* filepath) {
 
             StringClear(&buf);
 
-            if (!(TokenVectorPush(&token_vector, &token)))
+            if (!(TokenVectorPush(token_vector, &token)))
                 goto abort;
         } else if (isalpha(c)) {
             if (c == 'L') {
@@ -334,10 +330,9 @@ TokenVector Tokenize(const char* filepath) {
 
     fclose(fptr);
 
-    if (buf)
-        StringDestroy(buf);
+    StringDestroy(buf);
 
-    return token_vector;
+    return true;
 
 abort:
     if (fptr)
@@ -346,8 +341,5 @@ abort:
     if (buf)
         StringDestroy(buf);
 
-    if (token_vector)
-        TokenVectorDestroy(token_vector);
-
-    return NULL;
+    return true;
 }

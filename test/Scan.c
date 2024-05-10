@@ -16,7 +16,9 @@ int main(int argc, char* argv[]) {
         assert((filepath = StringCreate("../../test/constants.ctest", 100)));
     }
 
-    TokenVector tv = Tokenize(filepath);
+    TokenVector tv;
+    assert((tv = TokenVectorCreate(sizeof(size_t))));
+    assert(Tokenize(filepath, &tv));
 
     for (int i = 0; i < TokenVectorLength(tv); i++) {
         switch (tv[i].type) {
@@ -55,6 +57,9 @@ int main(int argc, char* argv[]) {
                 exit(-1);
         }
     }
+
+    TokenVectorDestroy(tv);
+    StringDestroy(filepath);
 
     return 0;
 }
