@@ -78,6 +78,14 @@ static inline void StringTrim(String* self, size_t n);
 /// @return returns false on error
 static inline bool StringShrink(String* self, size_t n);
 
+/// @brief Does String contain substring
+/// @param self
+/// @param substring string to check for
+/// @param substring_size size of substring
+/// @param case_sensitive is comparision case sensitive
+/// @return returns true if contains substring
+static inline bool StringContains(String self, const char* substring, size_t substring_size, bool case_sensitive);
+
 /// @brief Length of String
 /// @param self
 /// @return returns length of chars NOT including header or null byte
@@ -271,6 +279,24 @@ bool StringShrink(String* self, size_t n) {
 
     impl->size -= n;
     return StringReserve(self, impl->size);
+}
+
+bool StringContains(String self, const char* substring, size_t substring_size, bool case_sensitive) {
+    assert(self && substring && substring_size);
+
+    size_t i, match;
+
+    if (case_sensitive) {
+        for (i = 0; i < 1 + StringLength(self) - substring_size; i++)
+            if ((match = strncmp(&self[i], substring, substring_size)) == 0)
+                return true;
+    } else {
+        for (i = 0; i < 1 + StringLength(self) - substring_size; i++)
+            if ((match = strncasecmp(&self[i], substring, substring_size)) == 0)
+                return true;
+    }
+
+    return false;
 }
 
 size_t StringLength(String self) {

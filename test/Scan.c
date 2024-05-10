@@ -3,21 +3,17 @@
 #include <stdio.h>
 #include "Log.h"
 #include "String.h"
+#include "Test.h"
 
 // TODO make test more exhaustive
 
 int main(int argc, char* argv[]) {
     String filepath;
-    if (argc >= 2) {
-        assert((filepath = StringCreate(argv[1], 100)));
-        assert(StringAppend(&filepath, "/test/constants.ctest"));
-    } else {
-        LOG_INFO("%s", "For manual tests do \"./build/$TEST `pwd`\", this allows the test to find the test files");
-        assert((filepath = StringCreate("../../test/constants.ctest", 100)));
-    }
+    assert((filepath = StringCreate(NULL, 128)));
+    assert(GetTestPath((const char*[]){"../../test/constants.ctest", "./test/constants.ctest"}, 2, &filepath));
 
     TokenVector tv;
-    assert((tv = TokenVectorCreate(sizeof(size_t))));
+    assert((tv = TokenVectorCreate(0)));
     assert(Tokenize(filepath, &tv));
 
     for (int i = 0; i < TokenVectorLength(tv); i++) {

@@ -8,10 +8,9 @@
 #include "Token.h"
 
 typedef enum {
-    BINARY      = 2,
-    OCTAL       = 8,
-    DECIMAL     = 10,
-    HEXIDECIMAL = 16,
+    OCT = 8,
+    DEC = 10,
+    HEX = 16,
 } Radix;
 
 static inline char _Next(FILE* fptr) {
@@ -19,8 +18,9 @@ static inline char _Next(FILE* fptr) {
 }
 
 static inline char _Peek(FILE* fptr) {
-    int c = fgetc(fptr);
-    int r = ungetc(c, fptr);
+    int c, r;
+    c = fgetc(fptr);
+    r = ungetc(c, fptr);
     assert(r != EOF);
     return c;
 }
@@ -30,227 +30,311 @@ static inline void _Rewind(FILE* fptr, char c) {
     assert(r != EOF);
 }
 
-// returns the index of an error, if no error returns -1
-static ssize_t _ParseConstant(String str, Token* token) {
-    assert(str && token && StringLength(str) > 0);
+// int suffix
+static ssize_t _ParseConstantSuffix(String str, Token* token) {
+    assert(str && token);
 
-    Radix radix = DECIMAL;
-    size_t num, post; // indices for start of number, and postfix
-    size_t i       = 0;
-    char seperator = 0;
-    char c, low_c;
-    bool at_post     = false;    // at postfix indicator
-    size_t bad_octal = SIZE_MAX; // 0009.1 is a valid decimal float,
-                                 // bad_octal == SIZE_MAX if good, or the index of suspect number if bad
-
-    token->data.str = NULL;
-    c = str[i], low_c = tolower(c);
-
-    // prefix
-    while (low_c == '0') {
-        c = str[++i], low_c = tolower(c);
-
-        radix = low_c == 'b' ? BINARY : low_c == 'x' ? HEXIDECIMAL : OCTAL;
-
-        if (radix != OCTAL) {
-            if (i > 1) {
-                token->data.str = "invalid suffix on integer constant";
-                goto abort;
-            }
-
-            c = str[++i], low_c = tolower(c);
-            break;
-        }
-    }
-
-    num = i;
-
-    // number
-    while ((isalnum(low_c) || low_c == '.' || low_c == '-' || low_c == '+') && !at_post) {
-        switch (radix) {
-            case BINARY:
-                if (low_c == 'l' || low_c == 'u') {
-                    at_post = true;
-                } else if (low_c != '0' && low_c != '1') {
-                    token->data.str = "invalid digit in binary constant";
-                    goto abort;
-                }
-                break;
-            case OCTAL:
-                if (low_c == '.' || low_c == 'e')
-                    seperator = c, radix = DECIMAL;
-                else if (low_c == 'l' || low_c == 'u')
-                    at_post = true;
-                else if (!(low_c >= '0' && low_c < '8'))
-                    bad_octal = i;
-                break;
-            case DECIMAL:
-                if (low_c == '.') {
-                    if (seperator) {
-                        token->data.str = "invalid floating point constant decimal format";
-                        goto abort;
-                    }
-                    seperator = c;
-                } else if (low_c == 'e') {
-                    // 0.1e2 is valid
-                    if (seperator == 'e') {
-                        token->data.str = "invalid floating point constant exponent format";
-                        goto abort;
-                    }
-                    seperator = c;
-                } else if ((low_c == 'f' && seperator) || low_c == 'l' || low_c == 'u') {
-                    at_post = true;
-                } else if (!isdigit(low_c)) {
-                    if (!(seperator && tolower(str[i - 1]) == 'e' && (low_c == '-' || low_c == '+'))) {
-                        token->data.str = "invalid suffix on decimal constant";
-                        goto abort;
-                    }
-                }
-                break;
-            case HEXIDECIMAL:
-                if (low_c == '.') {
-                    token->data.str = "invalid floating point constant decimal format";
-                    goto abort;
-                } else if (low_c == 'p') {
-                    if (seperator) {
-                        token->data.str = "invalid floating point constant exponent format";
-                        goto abort;
-                    }
-                    seperator = c;
-                } else if ((low_c == 'f' && seperator) || low_c == 'l' || low_c == 'u') {
-                    at_post = true;
-                } else if (!isxdigit(low_c)) {
-                    if (!(seperator && tolower(str[i - 1]) == 'p' && (low_c == '-' || low_c == '+'))) {
-                        token->data.str = "invalid suffix on hexidecimal constant";
-                        goto abort;
-                    }
-                }
-                break;
-        }
-
-        if (!at_post)
-            c = str[++i], low_c = tolower(c);
-    }
-
-    if (radix == OCTAL && bad_octal != SIZE_MAX) {
-        token->data.str = "invalid digit in octal constant";
-        i               = bad_octal; // for error formatting purposes
-        goto abort;
-    }
-
-    post = i;
-
-    token->type = seperator ? TOKEN_DOUBLE_CONSTANT : TOKEN_INT_CONSTANT;
-
-    switch (StringLength(str) - post) { // length of postfix
+    switch (strlen(str)) {
         case 0:
+            token->type = TOKEN_INT_CONSTANT;
             break;
         case 1:
-            if (seperator) {
-                if (str[post] == 'f' || str[post] == 'F') {
-                    token->type = TOKEN_FLOAT_CONSTANT;
-                } else if (str[post] == 'l' || str[post] == 'L') {
-                    token->type = TOKEN_LONG_DOUBLE_CONSTANT;
-                } else {
-                    token->data.str = "invalid suffix on floating point constant";
-                    goto abort;
-                }
-            } else {
-                if (str[post] == 'u' || str[post] == 'U') {
-                    token->type = TOKEN_UNSIGNED_INT_CONSTANT;
-                } else if (str[post] == 'l' || str[post] == 'L') {
-                    token->type = TOKEN_LONG_INT_CONSTANT;
-                } else {
-                    token->data.str = "invalid suffix on integer constant";
-                    goto abort;
-                }
-            }
+            if (tolower(str[0]) == 'u')
+                token->type = TOKEN_UNSIGNED_INT_CONSTANT;
+            else if (tolower(str[0]) == 'l')
+                token->type = TOKEN_LONG_INT_CONSTANT;
+            else
+                goto abort;
             break;
         case 2:
-            if (seperator) {
-                token->data.str = "invalid suffix on floating point constant";
-                goto abort;
-            }
-
-            if (strcmp(&str[post], "ll") == 0 || strcmp(&str[post], "LL") == 0) {
+            if (tolower(str[0]) == 'l' && str[0] == str[1])
                 token->type = TOKEN_LONG_LONG_INT_CONSTANT;
-            } else if ((tolower(str[post]) == 'u' || tolower(str[post]) == 'U') &&
-                       (tolower(str[post + 1]) == 'l' || tolower(str[post + 1]) == 'L')) {
+            else if (tolower(str[0]) == 'u' && tolower(str[1]) == 'l')
                 token->type = TOKEN_UNSIGNED_LONG_INT_CONSTANT;
-            } else if ((tolower(str[post]) == 'l' || tolower(str[post]) == 'L') &&
-                       (tolower(str[post + 1]) == 'u' || tolower(str[post + 1]) == 'U')) {
+            else if (tolower(str[0]) == 'l' && tolower(str[1]) == 'u')
                 token->type = TOKEN_UNSIGNED_LONG_INT_CONSTANT;
-            } else {
-                token->data.str = "invalid suffix on integer constant";
+            else
                 goto abort;
-            }
             break;
         case 3:
-            if (seperator) {
-                token->data.str = "invalid suffix on floating point constant";
-                goto abort;
-            }
-
-            if ((str[post + 2] == 'u' || str[post + 2] == 'U') &&
-                (strncmp(&str[post], "ll", 2) == 0 || strncmp(&str[post], "LL", 2) == 0)) {
+            if (tolower(str[0]) == 'u' && tolower(str[1]) == 'l' && str[1] == str[2])
                 token->type = TOKEN_UNSIGNED_LONG_LONG_INT_CONSTANT;
-            } else if ((str[post] == 'u' || str[post] == 'U') &&
-                       (strncmp(&str[post + 1], "ll", 2) == 0 || strncmp(&str[post + 1], "LL", 2) == 0)) {
+            else if (tolower(str[2]) == 'u' && tolower(str[0]) == 'l' && str[0] == str[1])
                 token->type = TOKEN_UNSIGNED_LONG_LONG_INT_CONSTANT;
-            } else {
-                token->data.str = "invalid suffix on integer constant";
+            else
                 goto abort;
-            }
             break;
         default:
-            if (seperator)
-                token->data.str = "invalid suffix on floating point constant";
-            else
-                token->data.str = "invalid suffix on integer constant";
             goto abort;
     }
 
-    if (seperator) {
-        switch (token->type) {
-            case TOKEN_FLOAT_CONSTANT:
-                token->data.f = (float)strtod(str, NULL);
-                break;
-            case TOKEN_DOUBLE_CONSTANT:
-                token->data.d = strtod(str, NULL);
-                break;
-            case TOKEN_LONG_DOUBLE_CONSTANT:
-                token->data.ld = strtold(str, NULL);
-                break;
-            default:
-                LOG_ERROR("%s", "unreachable condition reached");
-                exit(1);
-        }
+    return -1;
+
+abort:
+    token->data.str = "invalid suffix on integer constant";
+    return 0;
+}
+
+// floating suffix
+static ssize_t _ParseConstantSuffixFP(String str, Token* token) {
+    assert(str && token);
+
+    if (strlen(str) > 1)
+        goto abort;
+
+    if (strlen(str) == 0) {
+        token->type = TOKEN_DOUBLE_CONSTANT;
+    } else if (tolower(str[0]) == 'f') {
+        token->type = TOKEN_FLOAT_CONSTANT;
+    } else if (tolower(str[0]) == 'l') {
+        token->type = TOKEN_LONG_DOUBLE_CONSTANT;
     } else {
-        token->data.ull = strtoull(&str[num], NULL, radix);
+        goto abort;
     }
 
-    //--- TODO
+    return -1;
 
-    printf("[");
-    for (i = 0; i < num; i++)
-        putc(str[i], stdout);
-    printf("][");
-    for (; i < post; i++)
-        putc(str[i], stdout);
-    printf("][");
-    for (; i < StringLength(str); i++)
-        putc(str[i], stdout);
-    printf("]\n");
+abort:
+    token->data.str = "invalid suffix on floating point constant";
+    return 0;
+}
 
-    //--- TODO
+// octal
+static ssize_t _ParseConstantOct(String str, Token* token) {
+    assert(str && token && token->data.str == NULL);
 
-    return -1; // happy path
+    char c;
+    ssize_t result, i = 0;
+
+    c = str[i];
+
+    while (isdigit(c)) {
+        if (c == '8' || c == '9') {
+            token->data.str = "unsupported digit in octal constant";
+            goto abort;
+        }
+        c = str[++i];
+    }
+
+    token->data.ull = i == 0 ? 0 : strtoull(str, NULL, OCT);
+
+    result = _ParseConstantSuffix(&str[i], token);
+    return result == -1 ? result : result + i;
 
 abort:
     return i;
 }
 
-// static bool _ParseChar(void) { return true; }
+// int decimal
+static ssize_t _ParseConstantDec(String str, Token* token) {
+    assert(str && token && token->data.str == NULL);
+
+    char c;
+    ssize_t result, i = 0;
+
+    c = str[i];
+
+    while (isdigit(c))
+        c = str[++i];
+
+    token->data.ull = strtoull(str, NULL, DEC);
+
+    result = _ParseConstantSuffix(&str[i], token);
+    return result == -1 ? result : result + i;
+}
+
+// floating decimal
+static ssize_t _ParseConstantDecFP(String str, Token* token) {
+    assert(str && token && token->data.str == NULL);
+
+    char c, low_c;
+    ssize_t result, i = 0;
+    bool seen_dot = false, seen_exp = false;
+
+    c = str[i], low_c = tolower(c);
+
+    while (isdigit(low_c) || low_c == '.' || low_c == 'e' || low_c == '-' || low_c == '+') {
+        if (low_c == '.') {
+            if (seen_dot) {
+                goto abort_dot;
+            } else if (seen_exp) {
+                goto abort_exp;
+            }
+            seen_dot = true;
+        } else if (low_c == 'e') {
+            if (seen_exp) {
+                token->data.str = "malformed exponention in floating constant";
+                goto abort_exp;
+            }
+            seen_exp = true;
+        }
+
+        c = str[++i], low_c = tolower(c);
+    }
+
+    if (-1 == (result = _ParseConstantSuffixFP(&str[i], token) /* <- mutates token.type */)) {
+        if (token->type == TOKEN_FLOAT_CONSTANT)
+            token->data.f = strtof(str, NULL);
+        else if (token->type == TOKEN_DOUBLE_CONSTANT)
+            token->data.d = strtod(str, NULL);
+        else if (token->type == TOKEN_LONG_DOUBLE_CONSTANT)
+            token->data.ld = strtold(str, NULL);
+        else
+            assert(0);
+
+        return -1; // happy path
+    }
+
+    return result + i;
+
+abort_dot:
+    token->data.str = "multiple decimal points in floating constant";
+    goto abort;
+
+abort_exp:
+    token->data.str = "malformed exponention in floating constant";
+    goto abort;
+
+abort:
+    return i;
+}
+
+// int hex
+static ssize_t _ParseConstantHex(String str, Token* token) {
+    assert(str && token && token->data.str == NULL);
+
+    char c;
+    ssize_t result, i = 0;
+
+    c = str[i];
+
+    while (isxdigit(c))
+        c = str[++i];
+
+    token->data.ull = strtoull(str, NULL, HEX);
+
+    result = _ParseConstantSuffix(&str[i], token);
+    return result == -1 ? result : result + i;
+}
+
+// floating hex
+static ssize_t _ParseConstantHexFP(String str, Token* token) {
+    assert(str && token && token->data.str == NULL);
+
+    char c, low_c;
+    ssize_t result, i = 0;
+    bool seen_dot = false, seen_exp = false;
+
+    c = str[i], low_c = tolower(c);
+
+    while (isxdigit(low_c) || low_c == '.' || low_c == 'p' || low_c == '-' || low_c == '+') {
+        if (low_c == '.') {
+            if (seen_dot)
+                goto abort_dot;
+            else if (seen_exp)
+                goto abort_exp;
+
+            seen_dot = true;
+        } else if (low_c == 'p') {
+            if (seen_exp)
+                goto abort_exp;
+
+            seen_exp = true;
+        } else if (!(isdigit(low_c) || low_c == '-' || low_c == '+') && seen_exp) {
+            // reached prefix
+            break;
+        }
+
+        c = str[++i], low_c = tolower(c);
+    }
+
+    if (-1 == (result = _ParseConstantSuffixFP(&str[i], token) /* <- mutates token.type */)) {
+        str -= 2; // we need to include '0x' for strto[f|d|ld] to work
+
+        if (token->type == TOKEN_FLOAT_CONSTANT)
+            token->data.f = strtof(str, NULL);
+        else if (token->type == TOKEN_DOUBLE_CONSTANT)
+            token->data.d = strtod(str, NULL);
+        else if (token->type == TOKEN_LONG_DOUBLE_CONSTANT)
+            token->data.ld = strtold(str, NULL);
+        else
+            assert(0);
+
+        return -1; // happy path
+    }
+
+    return result + i;
+
+abort_dot:
+    token->data.str = "multiple decimal points in floating constant";
+    goto abort;
+
+abort_exp:
+    token->data.str = "malformed exponention in floating constant";
+    goto abort;
+
+abort:
+    return i;
+}
+
+// returns the index of an error, if no error returns -1
+static ssize_t _ParseConstant(String str, Token* token) {
+    assert(str && token && StringLength(str) > 0);
+
+    Radix radix = DEC;
+    char c, low_c;
+    ssize_t result, i = 0;
+    bool floating = false;
+
+    token->data.str = NULL;
+    c = str[i], low_c = tolower(c);
+
+    // prefix will tell us the radix
+    while (low_c == '0') {
+        c = str[++i], low_c = tolower(c);
+
+        radix = low_c == 'x' ? HEX : OCT;
+
+        if (radix == HEX) {
+            if (i > 1) {
+                token->data.str = "invalid prefix on integer constant";
+                goto abort;
+            }
+
+            c = str[++i], low_c = tolower(c);
+            break;
+        }
+    }
+
+    if (radix == HEX) {
+        floating = StringContains(str, "p", 1, false);
+    } else {
+        floating = StringContains(str, ".", 1, true) || StringContains(str, "e", 1, false);
+        radix    = floating ? DEC : radix;
+    }
+
+    // parse at i-th index, trucating prefix
+    switch (radix) {
+        case OCT:
+            result = _ParseConstantOct(&str[i], token);
+            break;
+        case DEC:
+            result = floating ? _ParseConstantDecFP(&str[i], token) : _ParseConstantDec(&str[i], token);
+            break;
+        case HEX:
+            result = floating ? _ParseConstantHexFP(&str[i], token) : _ParseConstantHex(&str[i], token);
+            break;
+        default:
+            assert(0);
+    }
+
+    return result == -1 ? result : result + i;
+
+abort:
+    return i;
+}
+
+// static bool _ParseChar() { return true; }
 // static bool _ParseLongChar(void) { return true; }
 // static bool _ParseStr(void) { return true; }
 // static bool _ParseLongStr(void) { return true; }
@@ -258,7 +342,7 @@ abort:
 // static bool _ParsePunctuator(void) { return true; }
 
 bool Tokenize(const char* filepath, TokenVector* token_vector) {
-    assert(filepath);
+    assert(filepath && token_vector && *token_vector && TokenVectorLength(*token_vector) == 0);
 
     FILE* fptr = NULL;
     Token token;

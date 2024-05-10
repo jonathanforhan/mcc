@@ -154,6 +154,17 @@ void TestShrink(void) {
     StringDestroy(str);
 }
 
+void TestContains(void) {
+    String str;
+
+    assert((str = StringCreate(cstr, sizeof(cstr) - 1)));
+    assert(!StringContains(str, "hello", 5, true));
+    assert(StringContains(str, "hello", 5, false));
+    assert(StringContains(str, "world!", 6, true));
+
+    StringDestroy(str);
+}
+
 int main(void) {
     TestCreate();
     TestReserve();
@@ -164,6 +175,7 @@ int main(void) {
     TestCopy();
     TestTrim();
     TestShrink();
+    TestContains();
 
     return 0;
 }
