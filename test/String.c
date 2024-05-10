@@ -39,19 +39,19 @@ void TestReserve(void) {
     String str;
 
     assert((str = StringCreate("ABC", 3)));
-    assert((str = StringReserve(str, 2)));
+    assert(StringReserve(&str, 2));
     assert(StringLength(str) == 2);
     assert(StringCapacity(str) == 3);
     assert(str[StringLength(str)] == '\0');
     assert(strcmp(str, "AB") == 0);
 
-    assert((str = StringReserve(str, 100)));
+    assert(StringReserve(&str, 100));
     assert(StringLength(str) == 2);
     assert(StringCapacity(str) == 101);
     assert(str[StringLength(str)] == '\0');
     assert(strcmp(str, "AB") == 0);
 
-    assert((str = StringReserve(str, 2)));
+    assert(StringReserve(&str, 2));
     assert(StringLength(str) == 2);
     assert(StringCapacity(str) == 3);
     assert(str[StringLength(str)] == '\0');
@@ -64,10 +64,10 @@ void TestClear(void) {
     String str;
 
     assert((str = StringCreate(cstr, sizeof(cstr) - 1)));
-    assert((str = StringClear(str)));
+    StringClear(&str);
     assert(StringLength(str) == 0);
     assert(strcmp(str, "") == 0);
-    assert((str = StringAppend(str, "Hi")));
+    assert(StringAppend(&str, "Hi"));
     assert(StringLength(str) == 2);
     assert(strcmp(str, "Hi") == 0);
 
@@ -78,9 +78,9 @@ void TestPush(void) {
     String str;
 
     assert((str = StringCreate(cstr, 1)));
-    assert((str = StringPush(str, 'i')));
-    assert((str = StringPush(str, '!')));
-    assert((str = StringPush(str, '\n')));
+    assert(StringPush(&str, 'i'));
+    assert(StringPush(&str, '!'));
+    assert(StringPush(&str, '\n'));
     assert(StringLength(str) == 4);
     assert(str[StringLength(str)] == '\0');
     assert(strcmp(str, "Hi!\n") == 0);
@@ -92,9 +92,9 @@ void TestPop(void) {
     String str;
 
     assert((str = StringCreate("123456", 6)));
-    assert((str = StringPop(str)));
-    assert((str = StringPop(str)));
-    assert((str = StringPop(str)));
+    StringPop(&str);
+    StringPop(&str);
+    StringPop(&str);
     assert(StringLength(str) == 3);
     assert(str[StringLength(str)] == '\0');
     assert(strcmp(str, "123") == 0);
@@ -106,7 +106,7 @@ void TestAppend(void) {
     String str;
 
     assert((str = StringCreate("Hello, ", 7)));
-    assert((str = StringAppend(str, "world!\n")));
+    assert(StringAppend(&str, "world!\n"));
     assert(StringLength(str) == sizeof(cstr) - 1);
     assert(str[StringLength(str)] == '\0');
     assert(strcmp(str, cstr) == 0);
@@ -118,7 +118,7 @@ void TestCopy(void) {
     String str, str_cpy;
 
     assert((str = StringCreate(cstr, sizeof(cstr) - 1)));
-    assert((str_cpy = StringCopy(str)));
+    assert(StringCopy(str, &str_cpy));
     assert(StringLength(str) == StringLength(str_cpy));
     assert(str_cpy[StringLength(str_cpy)] == '\0');
     assert(strcmp(str, str_cpy) == 0);
@@ -131,8 +131,8 @@ void TestTrim(void) {
     String str;
 
     assert((str = StringCreate(cstr, sizeof(cstr) - 1)));
-    uint32_t capacity = StringCapacity(str);
-    assert((str = StringTrim(str, sizeof(", world!\n") - 1)));
+    size_t capacity = StringCapacity(str);
+    StringTrim(&str, sizeof(", world!\n") - 1);
     assert(StringLength(str) == sizeof("Hello") - 1);
     assert(str[StringLength(str)] == '\0');
     assert(StringCapacity(str) == capacity);
@@ -145,7 +145,7 @@ void TestShrink(void) {
     String str;
 
     assert((str = StringCreate(cstr, sizeof(cstr) - 1)));
-    assert((str = StringShrink(str, sizeof(", world!\n") - 1)));
+    StringShrink(&str, sizeof(", world!\n") - 1);
     assert(StringLength(str) == sizeof("Hello") - 1);
     assert(str[StringLength(str)] == '\0');
     assert(StringCapacity(str) == sizeof("Hello"));

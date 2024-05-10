@@ -3,9 +3,9 @@
 /// @file String.h
 /// @brief String class used in MCC
 ///
-/// Layout
+/// Layout (assuming 64-bit system, will be 4 bytes on a 32-bit)
 /// +--------------+------------------+------------------+-----------+
-/// | 4 bytes size | 4 bytes capacity | N bytes of chars | null byte |
+/// | 8 bytes size | 8 bytes capacity | N bytes of chars | null byte |
 /// +--------------+------------------+------------------+-----------+
 ///                                   ^ String pointer returned from member functions
 ///
@@ -15,9 +15,10 @@
 ///       the return value of the function.
 
 #include <assert.h>
-#include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include "Log.h"
 
 /// @brief String is simply an address to the stored chars
 typedef const char* String;
@@ -26,70 +27,70 @@ typedef const char* String;
 /// @param str initial string value, can be NULL
 /// @param reserve initial amount of space to reserve NOT including NULL byte
 /// @return returns NULL on error, otherwise points to allocated string
-inline String StringCreate(const char* str, uint32_t reserve);
+static inline String StringCreate(const char* str, size_t reserve);
 
 /// @brief Destroy String, deallocate memory reserved
 /// @param self
-inline void StringDestroy(String self);
+static inline void StringDestroy(String self);
 
 /// @brief Reserve `size` bytes, this function WILL allocate memory, unless size == capacity
 /// @param self
 /// @param size number of bytes to allocate, equivalent to number of chars CAN be less than size
-/// @return returns NULL on error, otherwise is a pointer to String
-inline String StringReserve(String self, uint32_t size);
+/// @return returns false on error
+static inline bool StringReserve(String* self, size_t size);
 
 /// @brief Clear all chars in String
 /// @param self
-/// @return returns NULL on error, otherwise is a pointer to String
-inline String StringClear(String self);
+static inline void StringClear(String* self);
 
 /// @brief Push a char to String, this function MAY allocate memory
 /// @param self
 /// @param c char to append
-/// @return returns NULL on error, otherwise is a pointer to String
-inline String StringPush(String self, char c);
+/// @return returns false on error
+static inline bool StringPush(String* self, char c);
 
 /// @brief Pop a char to String, this function does not allocate memory
 /// @param self
-/// @return returns a pointer to String
-inline String StringPop(String self);
+/// @return returns false on error
+static inline void StringPop(String* self);
 
 /// @brief Append another String to String, this function MAY allocate memory
 /// @param self
 /// @param other String to append, this String is preserved as-is
-/// @return returns NULL on error, otherwise is a pointer to String
-inline String StringAppend(String self, const char* other);
+/// @return returns false on error
+static inline bool StringAppend(String* self, const char* other);
 
 /// @brief Copy String, this function WILL allocate memory
 /// @param self
-/// @return returns NULL on error, otherwise is a pointer to a new String
-inline String StringCopy(String self);
+/// @param dest destination to copy self to
+/// @return returns false on error
+static inline bool StringCopy(String self, String* dest);
 
 /// @brief Trim String to specified size DOES NOT deallocate
 /// @param self
 /// @param n number of elements to trim
-/// @return returns a pointer to String
-inline String StringTrim(String self, uint32_t n);
+/// @return returns false on error
+static inline void StringTrim(String* self, size_t n);
 
 /// @brief Strink String to scecified size DOES deallocate
 /// @param self
 /// @param n number of elements to shrink
-/// @return returns a pointer to String
-inline String StringShrink(String self, uint32_t n);
+/// @return returns false on error
+static inline bool StringShrink(String* self, size_t n);
 
 /// @brief Length of String
 /// @param self
 /// @return returns length of chars NOT including header or null byte
-inline uint32_t StringLength(String self);
+static inline size_t StringLength(String self);
 
 /// @brief Capacity of String
 /// @param self
 /// @return returns capacity allocated memory NOT including header
-inline uint32_t StringCapacity(String self);
+static inline size_t StringCapacity(String self);
 
 struct __StringImpl {
-    uint32_t size;
-    uint32_t capacity;
+    size_t size;
+    size_t capacity;
 };
 
 #define __STRING_HEADER_SIZE (sizeof(struct __StringImpl))
@@ -98,7 +99,7 @@ struct __StringImpl {
 #define __STRING_GET_IMPL(_S) ((struct __StringImpl*)(((char*)_S) - __STRING_HEADER_SIZE))
 #define __STRING_GET_STRING(_Impl) (((char*)_Impl) + __STRING_HEADER_SIZE)
 
-struct __StringImpl* __StringRealloc(struct __StringImpl* impl, uint32_t n) {
+static inline struct __StringImpl* __StringRealloc(struct __StringImpl* impl, size_t n) {
     assert(impl != NULL);
 
     if (n + 1 == impl->capacity)
@@ -106,9 +107,11 @@ struct __StringImpl* __StringRealloc(struct __StringImpl* impl, uint32_t n) {
 
     struct __StringImpl* new_impl;
 
-    if ((new_impl = realloc(impl, n + __STRING_PADDING)) == NULL) {
-        if ((new_impl = malloc(n + __STRING_PADDING)) == NULL)
+    if (!(new_impl = realloc(impl, n + __STRING_PADDING))) {
+        if (!(new_impl = malloc(n + __STRING_PADDING))) {
+            LOG_FATAL("%s", "failed malloc, possible heap corruption");
             return NULL;
+        }
 
         memcpy(new_impl, impl, impl->size + __STRING_PADDING);
         free(impl);
@@ -119,10 +122,10 @@ struct __StringImpl* __StringRealloc(struct __StringImpl* impl, uint32_t n) {
     return new_impl;
 }
 
-String StringCreate(const char* str, uint32_t reserve) {
+String StringCreate(const char* str, size_t reserve) {
     struct __StringImpl* impl;
 
-    if ((impl = malloc(reserve + __STRING_PADDING)) == NULL)
+    if (!(impl = malloc(reserve + __STRING_PADDING)))
         return NULL;
 
     impl->capacity = reserve + 1;
@@ -141,18 +144,18 @@ String StringCreate(const char* str, uint32_t reserve) {
 }
 
 void StringDestroy(String self) {
-    assert(self != NULL);
+    assert(self);
 
     free(__STRING_GET_IMPL(self));
 }
 
-String StringReserve(String self, uint32_t size) {
-    assert(self != NULL);
+bool StringReserve(String* self, size_t size) {
+    assert(self && *self);
 
     struct __StringImpl* impl;
 
-    if ((impl = __StringRealloc(__STRING_GET_IMPL(self), size)) == NULL)
-        return NULL;
+    if (!(impl = __StringRealloc(__STRING_GET_IMPL(*self), size)))
+        return false;
 
     if (size < impl->size)
         impl->size = size;
@@ -160,29 +163,31 @@ String StringReserve(String self, uint32_t size) {
     char* string = __STRING_GET_STRING(impl);
 
     string[impl->size] = '\0';
-    return string;
+    *self              = string;
+
+    return true;
 }
 
-String StringClear(String self) {
-    assert(self != NULL);
+void StringClear(String* self) {
+    assert(self && *self);
 
-    struct __StringImpl* impl = __STRING_GET_IMPL(self);
-    char* string              = __STRING_GET_STRING(impl);
+    struct __StringImpl* impl = __STRING_GET_IMPL(*self);
+    impl->size                = 0;
 
-    impl->size = 0;
+    char* string = __STRING_GET_STRING(impl);
 
     string[impl->size] = '\0';
-    return string;
+    *self              = string;
 }
 
-String StringPush(String self, char c) {
-    assert(self != NULL);
+bool StringPush(String* self, char c) {
+    assert(self && *self);
 
-    struct __StringImpl* impl = __STRING_GET_IMPL(self);
+    struct __StringImpl* impl = __STRING_GET_IMPL(*self);
 
     if (impl->size + 1 == impl->capacity)
-        if ((impl = __StringRealloc(impl, impl->capacity * 2)) == NULL)
-            return NULL;
+        if (!(impl = __StringRealloc(impl, impl->capacity * 2)))
+            return false;
 
     char* string = __STRING_GET_STRING(impl);
 
@@ -190,37 +195,39 @@ String StringPush(String self, char c) {
     impl->size++;
 
     string[impl->size] = '\0';
-    return string;
+    *self              = string;
+
+    return true;
 }
 
-String StringPop(String self) {
-    assert(self != NULL);
+void StringPop(String* self) {
+    assert(self && *self);
 
-    struct __StringImpl* impl = __STRING_GET_IMPL(self);
+    struct __StringImpl* impl = __STRING_GET_IMPL(*self);
     char* string              = __STRING_GET_STRING(impl);
 
     impl->size--;
 
     string[impl->size] = '\0';
-    return string;
+    *self              = string;
 }
 
-String StringAppend(String self, const char* other) {
-    assert(self != NULL && other != NULL);
+bool StringAppend(String* self, const char* other) {
+    assert(self && *self && other);
 
-    struct __StringImpl* impl = __STRING_GET_IMPL(self);
+    struct __StringImpl* impl = __STRING_GET_IMPL(*self);
 
-    uint32_t n = strlen(other);
+    size_t n = strlen(other);
 
     if (impl->size + n >= impl->capacity) {
-        uint32_t new_capacity = impl->capacity;
+        size_t new_capacity = impl->capacity;
 
         do {
             new_capacity *= 2;
         } while (new_capacity <= impl->size + n);
 
-        if ((impl = __StringRealloc(impl, new_capacity)) == NULL)
-            return NULL;
+        if (!(impl = __StringRealloc(impl, new_capacity)))
+            return false;
     }
 
     char* string = __STRING_GET_STRING(impl);
@@ -229,19 +236,21 @@ String StringAppend(String self, const char* other) {
     impl->size += n;
 
     assert(string[impl->size] == '\0');
-    return string;
+    *self = string;
+
+    return true;
 }
 
-String StringCopy(String self) {
-    assert(self != NULL);
+bool StringCopy(String self, String* dest) {
+    assert(self);
 
-    return StringCreate(self, __STRING_GET_IMPL(self)->size);
+    return (*dest = StringCreate(self, __STRING_GET_IMPL(self)->size));
 }
 
-String StringTrim(String self, uint32_t n) {
-    assert(self != NULL);
+void StringTrim(String* self, size_t n) {
+    assert(self && *self);
 
-    struct __StringImpl* impl = __STRING_GET_IMPL(self);
+    struct __StringImpl* impl = __STRING_GET_IMPL(*self);
 
     assert(n <= impl->size);
 
@@ -250,13 +259,13 @@ String StringTrim(String self, uint32_t n) {
     impl->size -= n;
 
     string[impl->size] = '\0';
-    return string;
+    *self              = string;
 }
 
-String StringShrink(String self, uint32_t n) {
-    assert(self != NULL);
+bool StringShrink(String* self, size_t n) {
+    assert(self && *self);
 
-    struct __StringImpl* impl = __STRING_GET_IMPL(self);
+    struct __StringImpl* impl = __STRING_GET_IMPL(*self);
 
     assert(n <= impl->size);
 
@@ -264,13 +273,13 @@ String StringShrink(String self, uint32_t n) {
     return StringReserve(self, impl->size);
 }
 
-uint32_t StringLength(String self) {
-    assert(self != NULL);
+size_t StringLength(String self) {
+    assert(self);
 
     return __STRING_GET_IMPL(self)->size;
 }
 
-uint32_t StringCapacity(String self) {
+size_t StringCapacity(String self) {
     assert(self != NULL);
 
     return __STRING_GET_IMPL(self)->capacity;

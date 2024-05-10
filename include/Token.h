@@ -13,7 +13,6 @@
 /// These groups will have a certain bit to mark them as such in the Token
 /// there is also a bit for describing a malformed Token
 
-#include <stdint.h>
 #include "String.h"
 
 #define TOKEN_KEYWORD_BIT 0x0400
@@ -73,11 +72,18 @@ typedef enum TokenType {
 
     // Constants
 
-    TOKEN_INTEGER_CONSTANT        = TOKEN_CONSTANT_BIT | 0x01,
-    TOKEN_FLOATING_CONSTANT       = TOKEN_CONSTANT_BIT | 0x02,
-    TOKEN_ENUMERATION_CONSTANT    = TOKEN_CONSTANT_BIT | 0x03,
-    TOKEN_CHARACTER_CONSTANT      = TOKEN_CONSTANT_BIT | 0x04,
-    TOKEN_WIDE_CHARACTER_CONSTANT = TOKEN_CONSTANT_BIT | 0x05,
+    TOKEN_INT_CONSTANT                    = TOKEN_CONSTANT_BIT | 0x01,
+    TOKEN_LONG_INT_CONSTANT               = TOKEN_CONSTANT_BIT | 0x02,
+    TOKEN_LONG_LONG_INT_CONSTANT          = TOKEN_CONSTANT_BIT | 0x03,
+    TOKEN_UNSIGNED_INT_CONSTANT           = TOKEN_CONSTANT_BIT | 0x04,
+    TOKEN_UNSIGNED_LONG_INT_CONSTANT      = TOKEN_CONSTANT_BIT | 0x05,
+    TOKEN_UNSIGNED_LONG_LONG_INT_CONSTANT = TOKEN_CONSTANT_BIT | 0x06,
+    TOKEN_FLOAT_CONSTANT                  = TOKEN_CONSTANT_BIT | 0x07,
+    TOKEN_DOUBLE_CONSTANT                 = TOKEN_CONSTANT_BIT | 0x08,
+    TOKEN_LONG_DOUBLE_CONSTANT            = TOKEN_CONSTANT_BIT | 0x09,
+    TOKEN_ENUMERATION_CONSTANT            = TOKEN_CONSTANT_BIT | 0x0a,
+    TOKEN_CHARACTER_CONSTANT              = TOKEN_CONSTANT_BIT | 0x0b,
+    TOKEN_WIDE_CHARACTER_CONSTANT         = TOKEN_CONSTANT_BIT | 0x0c,
 
     // String-Literals
 
@@ -161,11 +167,23 @@ typedef struct Token {
     /// @brief May be different depending on the corresponding type, some types dont require data
     /// keyword          Token.data : NONE
     /// identifier       Token.data : str
-    /// constant         Token.data : num
+    /// constant         Token.data : [see number options]
     /// string literal   Token.data : str
     /// punctuator       Token.data : NONE
     union {
         String str;
-        uint64_t num;
+        char c;
+        short s;
+        int i;
+        long l;
+        long long ll;
+        unsigned char uc;
+        unsigned short us;
+        unsigned int u;
+        unsigned long ul;
+        unsigned long long ull;
+        float f;
+        double d;
+        long double ld;
     } data;
 } Token;

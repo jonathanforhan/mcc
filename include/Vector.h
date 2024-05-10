@@ -3,11 +3,11 @@
 /// @file Vector.h
 /// @brief Vector class used in MCC
 ///
-/// Layout
-/// +----------+----------+----------+------------------+------------+
-/// | 4 bytes  | 4 bytes  | 4 bytes  | 8 bytes          | N Elements |
-/// +----------+----------+----------+------------------+------------+
-/// ^ size     ^ capacity ^elem size ^ destructor ptr   ^ Vector pointer returned
+/// Layout (assuming 64-bit system, will be 4 bytes on a 32-bit)
+/// +------------+------------+------------+------------+------------+
+/// | 8 bytes    | 8 bytes    | 8 bytes    | 8 bytes    | N Elements |
+/// +------------+------------+------------+------------+------------+
+/// ^ size       ^ capacity   ^elem size   ^ destructor ^ Vector pointer returned
 ///
 /// NOTE: if a member function returns `Vector`, the return value MUST be checked.
 ///       If the return value is NULL an error has occured, otherwise it is a pointer
@@ -21,10 +21,11 @@
 /// to create inline functions for known types
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "Log.h"
 
 /// @brief Vector is an address to stored elements
 typedef const void* Vector;
@@ -33,77 +34,78 @@ typedef const void* Vector;
 /// @param reserve initial amount of elements to reserve
 /// @param elem_size size of element
 /// @return returns NULL on error, otherwise points to allocated block
-inline Vector VectorCreate(uint32_t reserve, uint32_t elem_size, void (*destructor)(void*));
+static inline Vector VectorCreate(size_t reserve, size_t elem_size, void (*destructor)(void*));
 
 /// @brief Destroy Vector, dellocate memory reserved and calls destructor
 /// @param self
-inline void VectorDestroy(Vector self);
+static inline void VectorDestroy(Vector self);
 
 /// @brief Reserve `size` elements, this function WILL allocate memory, unless size == capacity
 /// @param self
 /// @param size number of elements to allocate, CANNOT be less than size
-/// @return returns NULL on error, otherwise points to allocated block
-inline Vector VectorReserve(Vector self, uint32_t size);
+/// @return returns false on error
+static inline bool VectorReserve(Vector* self, size_t size);
 
 /// @brief Clear all elements in Vector
 /// @param self
-/// @return returns NULL on error, otherwise is a pointer to String
-inline Vector VectorClear(Vector self);
+static inline void VectorClear(Vector* self);
 
 /// @brief Push an element via memcpy, this function MAY allocate memory
 /// @param self
 /// @param elem element to copy
-/// @return returns NULL on error, otherwise points to allocated block
-inline Vector VectorPush(Vector self, void* elem);
+/// @return returns false on error
+static inline bool VectorPush(Vector* self, void* elem);
 
 /// @brief Pop an element, calling it's destructor, this function does not allocate
 /// @param self
-/// @return returns NULL on error, otherwise points to allocated block
-inline Vector VectorPop(Vector self);
+static inline void VectorPop(Vector* self);
 
 /// @brief Length of Vector
 /// @param self
 /// @return Length of Vector in terms of elements
-inline uint32_t VectorLength(Vector self);
+static inline size_t VectorLength(Vector self);
 
 /// @brief Capacity of Vector
 /// @param self
 /// @return Capacity of Vector in terms of elements
-inline uint32_t VectorCapacity(Vector self);
+static inline size_t VectorCapacity(Vector self);
 
 /// @brief Element size of vector
 /// @param self
 /// @return Element size of Vector
-inline uint32_t VectorElementSize(Vector self);
+static inline size_t VectorElementSize(Vector self);
 
 struct __VectorImpl {
-    uint32_t size;
-    uint32_t capacity;
-    uint32_t elem_size;
+    size_t size;
+    size_t capacity;
+    size_t elem_size;
     void (*destructor)(void*);
 };
 
 #define __VECTOR_HEADER_SIZE (sizeof(struct __VectorImpl))
-#define __VECTOR_GET_IMPL(_V) ((struct __VectorImpl*)(((uint8_t*)_V) - __VECTOR_HEADER_SIZE))
-#define __VECTOR_GET_VECTOR(_Impl) ((void*)(((uint8_t*)_Impl) + __VECTOR_HEADER_SIZE))
+#define __VECTOR_GET_IMPL(_V) ((struct __VectorImpl*)(((unsigned char*)_V) - __VECTOR_HEADER_SIZE))
+#define __VECTOR_GET_VECTOR(_Impl) ((void*)(((unsigned char*)_Impl) + __VECTOR_HEADER_SIZE))
 
-struct __VectorImpl* __VectorRealloc(struct __VectorImpl* impl, uint32_t n) {
-    assert(impl != NULL);
+static inline struct __VectorImpl* __VectorRealloc(struct __VectorImpl* impl, size_t n) {
+    assert(impl);
 
     if (n == impl->capacity)
         return impl;
 
     if (n < impl->size) {
-        for (uint32_t i = n; i < impl->size; i++)
-            if (impl->destructor != NULL)
-                impl->destructor(((uint8_t*)__VECTOR_GET_VECTOR(impl)) + (i * impl->elem_size));
+        for (size_t i = n; i < impl->size; i++) {
+            if (impl->destructor)
+                impl->destructor(((unsigned char*)__VECTOR_GET_VECTOR(impl)) + (i * impl->elem_size));
+        }
     }
 
     struct __VectorImpl* new_impl;
 
-    if ((new_impl = realloc(impl, n * impl->elem_size + __VECTOR_HEADER_SIZE)) == NULL) {
-        if ((new_impl = malloc(n * impl->elem_size + __VECTOR_HEADER_SIZE)) == NULL)
+    if (!(new_impl = realloc(impl, n * impl->elem_size + __VECTOR_HEADER_SIZE))) {
+        if (!(new_impl = malloc(n * impl->elem_size + __VECTOR_HEADER_SIZE))) {
+            LOG_FATAL("%s", "failed malloc, possible heap corruption");
             return NULL;
+        }
 
         memcpy(new_impl, impl, impl->size * impl->elem_size + __VECTOR_HEADER_SIZE);
         free(impl);
@@ -114,12 +116,12 @@ struct __VectorImpl* __VectorRealloc(struct __VectorImpl* impl, uint32_t n) {
     return new_impl;
 }
 
-Vector VectorCreate(uint32_t reserve, uint32_t elem_size, void (*destructor)(void*)) {
+Vector VectorCreate(size_t reserve, size_t elem_size, void (*destructor)(void*)) {
     assert(elem_size > 0);
 
     struct __VectorImpl* impl;
 
-    if ((impl = malloc((reserve * elem_size) + __VECTOR_HEADER_SIZE)) == NULL)
+    if (!(impl = malloc((reserve * elem_size) + __VECTOR_HEADER_SIZE)))
         return NULL;
 
     impl->size       = 0;
@@ -131,90 +133,90 @@ Vector VectorCreate(uint32_t reserve, uint32_t elem_size, void (*destructor)(voi
 }
 
 void VectorDestroy(Vector self) {
-    assert(self != NULL);
+    assert(self);
 
     struct __VectorImpl* impl = __VECTOR_GET_IMPL(self);
 
-    for (uint32_t i = 0; i < impl->size; i++)
-        if (impl->destructor != NULL)
-            impl->destructor(((uint8_t*)self) + (i * impl->elem_size));
+    for (size_t i = 0; i < impl->size; i++) {
+        if (impl->destructor)
+            impl->destructor(((unsigned char*)self) + (i * impl->elem_size));
+    }
 
     free(impl);
 }
 
-Vector VectorReserve(Vector self, uint32_t size) {
-    assert(self != NULL);
+bool VectorReserve(Vector* self, size_t size) {
+    assert(self && *self);
 
-    struct __VectorImpl* impl = __VECTOR_GET_IMPL(self);
+    struct __VectorImpl* impl = __VECTOR_GET_IMPL(*self);
 
-    if ((impl = __VectorRealloc(impl, size)) == NULL)
-        return NULL;
+    if (!(impl = __VectorRealloc(impl, size)))
+        return false;
 
     if (size < impl->size)
         impl->size = size;
 
-    return __VECTOR_GET_VECTOR(impl);
+    *self = __VECTOR_GET_VECTOR(impl);
+    return true;
 }
 
-Vector VectorClear(Vector self) {
-    assert(self != NULL);
+void VectorClear(Vector* self) {
+    assert(self && *self);
 
-    struct __VectorImpl* impl = __VECTOR_GET_IMPL(self);
-    uint8_t* vector           = __VECTOR_GET_VECTOR(impl);
+    struct __VectorImpl* impl = __VECTOR_GET_IMPL(*self);
+    unsigned char* vector     = __VECTOR_GET_VECTOR(impl);
 
-    for (uint32_t i = 0; i < impl->size; i++)
-        if (impl->destructor != NULL)
+    for (size_t i = 0; i < impl->size; i++)
+        if (impl->destructor)
             impl->destructor(vector + (i * impl->elem_size));
 
     impl->size = 0;
 
-    return vector;
+    *self = vector;
 }
 
-Vector VectorPush(Vector self, void* elem) {
-    assert(self != NULL && elem != NULL);
+bool VectorPush(Vector* self, void* elem) {
+    assert(self && *self && elem);
 
-    struct __VectorImpl* impl = __VECTOR_GET_IMPL(self);
+    struct __VectorImpl* impl = __VECTOR_GET_IMPL(*self);
 
     if (impl->size == impl->capacity)
-        if ((impl = __VectorRealloc(impl, impl->capacity ? impl->capacity * 2 : 1)) == NULL)
-            return NULL;
+        if (!(impl = __VectorRealloc(impl, impl->capacity ? impl->capacity * 2 : 1)))
+            return false;
 
-    uint8_t* vector = __VECTOR_GET_VECTOR(impl);
+    unsigned char* vector = __VECTOR_GET_VECTOR(impl);
 
     memcpy(&vector[impl->size * impl->elem_size], elem, impl->elem_size);
     impl->size++;
 
-    return vector;
+    return (*self = vector);
 }
 
-Vector VectorPop(Vector self) {
-    assert(self != NULL);
+void VectorPop(Vector* self) {
+    assert(self && *self);
 
-    struct __VectorImpl* impl = __VECTOR_GET_IMPL(self);
+    struct __VectorImpl* impl = __VECTOR_GET_IMPL(*self);
 
-    if (impl->destructor != NULL)
-        impl->destructor(((uint8_t*)self) + ((impl->size - 1) * impl->elem_size));
+    if (impl->destructor)
+        impl->destructor(((unsigned char*)*self) + ((impl->size - 1) * impl->elem_size));
 
     impl->size--;
-
-    return self;
 }
 
-uint32_t VectorLength(Vector self) {
-    assert(self != NULL);
+size_t VectorLength(Vector self) {
+    assert(self);
 
     return __VECTOR_GET_IMPL(self)->size;
 }
 
-uint32_t VectorCapacity(Vector self) {
-    assert(self != NULL);
+size_t VectorCapacity(Vector self) {
+    assert(self);
 
     return __VECTOR_GET_IMPL(self)->capacity;
 }
 
-uint32_t VectorElementSize(Vector self) {
-    assert(self != NULL);
+size_t VectorElementSize(Vector self) {
+    assert(self);
 
     return __VECTOR_GET_IMPL(self)->elem_size;
 }

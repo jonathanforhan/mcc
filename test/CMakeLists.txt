@@ -1,6 +1,7 @@
 set(TESTS
     String
     Vector
+    Scan
 )
 
 foreach(TEST IN LISTS TESTS)
