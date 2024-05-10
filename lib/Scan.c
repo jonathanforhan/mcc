@@ -213,13 +213,13 @@ static ssize_t _ParseConstant(String str, Token* token) {
     if (seperator) {
         switch (token->type) {
             case TOKEN_FLOAT_CONSTANT:
-                token->data.f = (float)strtod(&str[num], NULL);
+                token->data.f = (float)strtod(str, NULL);
                 break;
             case TOKEN_DOUBLE_CONSTANT:
-                token->data.d = strtod(&str[num], NULL);
+                token->data.d = strtod(str, NULL);
                 break;
             case TOKEN_LONG_DOUBLE_CONSTANT:
-                token->data.ld = strtold(&str[num], NULL);
+                token->data.ld = strtold(str, NULL);
                 break;
             default:
                 LOG_ERROR("%s", "unreachable condition reached");
@@ -231,16 +231,16 @@ static ssize_t _ParseConstant(String str, Token* token) {
 
     //--- TODO
 
-    // printf("[");
-    // for (i = 0; i < num; i++)
-    //     putc(str[i], stdout);
-    // printf("][");
-    // for (; i < post; i++)
-    //     putc(str[i], stdout);
-    // printf("][");
-    // for (; i < StringLength(str); i++)
-    //     putc(str[i], stdout);
-    // printf("]\n");
+    printf("[");
+    for (i = 0; i < num; i++)
+        putc(str[i], stdout);
+    printf("][");
+    for (; i < post; i++)
+        putc(str[i], stdout);
+    printf("][");
+    for (; i < StringLength(str); i++)
+        putc(str[i], stdout);
+    printf("]\n");
 
     //--- TODO
 
