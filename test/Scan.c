@@ -46,8 +46,14 @@ int main(int argc, char* argv[]) {
                 printf("%s %Lf\n", " LONG_DOUBLE", tv[i].data.ld);
                 break;
             case TOKEN_ENUMERATION_CONSTANT:
+                printf("%s\n", "TODO ENUM..."); // TODO
+                break;
             case TOKEN_CHARACTER_CONSTANT:
+                printf("%s %d %c\n", " CHARACTER", tv[i].data.c, tv[i].data.c);
+                break;
             case TOKEN_WIDE_CHARACTER_CONSTANT:
+                printf("%s %d %c\n", " WIDE_CHARACTER", tv[i].data.w, tv[i].data.w);
+                break;
             default:
                 LOG_ERROR("%s", "something is very wrong\n");
                 exit(-1);

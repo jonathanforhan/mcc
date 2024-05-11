@@ -7,6 +7,12 @@
 #include "Log.h"
 #include "Token.h"
 
+#if defined __GNUC__ || defined __clang__
+#define EXPLICIT_FALLTHROUGH __attribute__((fallthrough))
+#else
+#define EXPLICIT_FALLTHROUGH
+#endif
+
 typedef enum {
     OCT = 8,
     DEC = 10,
@@ -30,8 +36,126 @@ static inline void _Rewind(FILE* fptr, char c) {
     assert(r != EOF);
 }
 
-// int suffix
-static ssize_t _ParseConstantSuffix(String str, Token* token) {
+// TODO create individual tokenize functions that will call their parse functions
+bool Tokenize(const char* filepath, TokenVector* token_vector) {
+    assert(filepath && token_vector && *token_vector && TokenVectorLength(*token_vector) == 0);
+
+    FILE* fptr = NULL;
+    Token token;
+    String buf = NULL;
+    char c, prev, peek;
+    ssize_t line = 0, bad_index;
+    bool escaped = false;
+
+    if (!(fptr = fopen(filepath, "r"))) {
+        LOG_ERROR("unable to open file %s", filepath);
+        goto abort;
+    }
+
+    if (!(buf = StringCreate(NULL, sizeof(size_t))))
+        goto abort;
+
+    for (c = '\0';;) {
+        prev = c, c = _Next(fptr);
+
+        if (c == '\n') {
+            line++;
+            continue;
+        }
+
+        if (feof(fptr))
+            break;
+
+        if (isdigit(c) || (c == '.' && isdigit(_Peek(fptr)))) {
+            while (isalnum(c) || c == '.' || // maximal munch
+                   ((c == '+' || c == '-') && (tolower(prev) == 'e' || tolower(prev) == 'p'))) {
+                if (!(StringPush(&buf, c)))
+                    goto abort;
+                prev = c, c = _Next(fptr);
+            }
+
+            _Rewind(fptr, c); // overshot
+            bad_index = ParseConstant(buf, &token);
+        } else if (isalpha(c)) {
+            if (c == 'L' && (peek = _Peek(fptr)) == '\'') {
+                peek = _Peek(fptr);
+                if (!(StringPush(&buf, c)))
+                    goto abort;
+                prev = c, c = _Next(fptr);
+
+                do {
+                    if (!(StringPush(&buf, c)))
+                        goto abort;
+                    prev = c, c = _Next(fptr);
+
+                    escaped = prev == '\\' && !escaped;
+                } while ((c != '\'' || escaped) && c != EOF);
+
+                if (!(StringPush(&buf, c))) // add closing '
+                    goto abort;
+
+                bad_index = ParseLongChar(buf, &token);
+            } else if (c == 'L' && peek == '"') {
+                // long str
+                continue;
+            } else {
+                // keyword or identifier
+                continue;
+            }
+        } else if (c == '\'') {
+            do {
+                if (!(StringPush(&buf, c)))
+                    goto abort;
+                prev = c, c = _Next(fptr);
+
+                escaped = prev == '\\' && !escaped;
+            } while ((c != '\'' || escaped) && c != EOF);
+
+            if (!(StringPush(&buf, c))) // add closing '
+                goto abort;
+
+            bad_index = ParseChar(buf, &token);
+        } else if (c == '"') {
+            // str
+            continue;
+        } else {
+            // punctuator
+            continue;
+        }
+
+        if (!(bad_index < 0)) {
+            LogDetailedError(&(DetailedLog){
+                .filename     = filepath,
+                .line         = line,
+                .error        = buf,
+                .bad_index    = bad_index,
+                .error_length = StringLength(buf) - bad_index,
+                .explaination = token.data.str, // statically allocated don't worry
+            });
+        }
+        StringClear(&buf);
+
+        if (!(TokenVectorPush(token_vector, &token)))
+            goto abort;
+    }
+
+    fclose(fptr);
+
+    StringDestroy(buf);
+
+    return true;
+
+abort:
+    if (fptr)
+        fclose(fptr);
+
+    if (buf)
+        StringDestroy(buf);
+
+    return true;
+}
+
+ssize_t ParseConstantSuffix(String str, Token* token) {
     assert(str && token);
 
     switch (strlen(str)) {
@@ -75,8 +199,7 @@ abort:
     return 0;
 }
 
-// floating suffix
-static ssize_t _ParseConstantSuffixFP(String str, Token* token) {
+ssize_t ParseConstantSuffixFP(String str, Token* token) {
     assert(str && token);
 
     if (strlen(str) > 1)
@@ -99,8 +222,7 @@ abort:
     return 0;
 }
 
-// octal
-static ssize_t _ParseConstantOct(String str, Token* token) {
+ssize_t ParseConstantOct(String str, Token* token) {
     assert(str && token && token->data.str == NULL);
 
     char c;
@@ -118,15 +240,14 @@ static ssize_t _ParseConstantOct(String str, Token* token) {
 
     token->data.ull = i == 0 ? 0 : strtoull(str, NULL, OCT);
 
-    result = _ParseConstantSuffix(&str[i], token);
-    return result == -1 ? result : result + i;
+    result = ParseConstantSuffix(&str[i], token);
+    return result < 0 ? result : result + i;
 
 abort:
     return i;
 }
 
-// int decimal
-static ssize_t _ParseConstantDec(String str, Token* token) {
+ssize_t ParseConstantDec(String str, Token* token) {
     assert(str && token && token->data.str == NULL);
 
     char c;
@@ -139,12 +260,11 @@ static ssize_t _ParseConstantDec(String str, Token* token) {
 
     token->data.ull = strtoull(str, NULL, DEC);
 
-    result = _ParseConstantSuffix(&str[i], token);
-    return result == -1 ? result : result + i;
+    result = ParseConstantSuffix(&str[i], token);
+    return result < 0 ? result : result + i;
 }
 
-// floating decimal
-static ssize_t _ParseConstantDecFP(String str, Token* token) {
+ssize_t ParseConstantDecFP(String str, Token* token) {
     assert(str && token && token->data.str == NULL);
 
     char c, low_c;
@@ -172,7 +292,7 @@ static ssize_t _ParseConstantDecFP(String str, Token* token) {
         c = str[++i], low_c = tolower(c);
     }
 
-    if (-1 == (result = _ParseConstantSuffixFP(&str[i], token) /* <- mutates token.type */)) {
+    if (-1 == (result = ParseConstantSuffixFP(&str[i], token) /* <- mutates token.type */)) {
         if (token->type == TOKEN_FLOAT_CONSTANT)
             token->data.f = strtof(str, NULL);
         else if (token->type == TOKEN_DOUBLE_CONSTANT)
@@ -199,8 +319,7 @@ abort:
     return i;
 }
 
-// int hex
-static ssize_t _ParseConstantHex(String str, Token* token) {
+ssize_t ParseConstantHex(String str, Token* token) {
     assert(str && token && token->data.str == NULL);
 
     char c;
@@ -213,12 +332,11 @@ static ssize_t _ParseConstantHex(String str, Token* token) {
 
     token->data.ull = strtoull(str, NULL, HEX);
 
-    result = _ParseConstantSuffix(&str[i], token);
-    return result == -1 ? result : result + i;
+    result = ParseConstantSuffix(&str[i], token);
+    return result < 0 ? result : result + i;
 }
 
-// floating hex
-static ssize_t _ParseConstantHexFP(String str, Token* token) {
+ssize_t ParseConstantHexFP(String str, Token* token) {
     assert(str && token && token->data.str == NULL);
 
     char c, low_c;
@@ -248,7 +366,7 @@ static ssize_t _ParseConstantHexFP(String str, Token* token) {
         c = str[++i], low_c = tolower(c);
     }
 
-    if (-1 == (result = _ParseConstantSuffixFP(&str[i], token) /* <- mutates token.type */)) {
+    if (-1 == (result = ParseConstantSuffixFP(&str[i], token) /* <- mutates token.type */)) {
         str -= 2; // we need to include '0x' for strto[f|d|ld] to work
 
         if (token->type == TOKEN_FLOAT_CONSTANT)
@@ -277,8 +395,7 @@ abort:
     return i;
 }
 
-// returns the index of an error, if no error returns -1
-static ssize_t _ParseConstant(String str, Token* token) {
+ssize_t ParseConstant(String str, Token* token) {
     assert(str && token && StringLength(str) > 0);
 
     Radix radix = DEC;
@@ -316,114 +433,101 @@ static ssize_t _ParseConstant(String str, Token* token) {
     // parse at i-th index, trucating prefix
     switch (radix) {
         case OCT:
-            result = _ParseConstantOct(&str[i], token);
+            result = ParseConstantOct(&str[i], token);
             break;
         case DEC:
-            result = floating ? _ParseConstantDecFP(&str[i], token) : _ParseConstantDec(&str[i], token);
+            result = floating ? ParseConstantDecFP(&str[i], token) : ParseConstantDec(&str[i], token);
             break;
         case HEX:
-            result = floating ? _ParseConstantHexFP(&str[i], token) : _ParseConstantHex(&str[i], token);
+            result = floating ? ParseConstantHexFP(&str[i], token) : ParseConstantHex(&str[i], token);
             break;
         default:
             assert(0);
     }
 
-    return result == -1 ? result : result + i;
+    return result < 0 ? result : result + i;
 
 abort:
     return i;
 }
 
-// static bool _ParseChar() { return true; }
-// static bool _ParseLongChar(void) { return true; }
-// static bool _ParseStr(void) { return true; }
-// static bool _ParseLongStr(void) { return true; }
-// static bool _ParseKeywordOrIdentifier(void) { return true; }
-// static bool _ParsePunctuator(void) { return true; }
+ssize_t ParseChar(String str, Token* token) {
+    assert(str && token && StringLength(str) > 0);
+    assert(str[0] == '\'');
 
-bool Tokenize(const char* filepath, TokenVector* token_vector) {
-    assert(filepath && token_vector && *token_vector && TokenVectorLength(*token_vector) == 0);
+    char c;
+    ssize_t i = 0;
 
-    FILE* fptr = NULL;
-    Token token;
-    String buf = NULL;
-    char c, prev, peek;
-    ssize_t line = 0, bad_index;
+    c = str[++i];
 
-    if (!(fptr = fopen(filepath, "r"))) {
-        LOG_ERROR("unable to open file %s", filepath);
-        goto abort;
-    }
+    if (c == '\\') {
+        // in escape sequence
+        c = str[++i];
 
-    if (!(buf = StringCreate(NULL, sizeof(size_t))))
-        goto abort;
-
-    for (c = '\0';;) {
-        prev = c, c = _Next(fptr);
-
-        if (c == '\n') {
-            line++;
-            continue;
-        }
-
-        if (isdigit(c) || (c == '.' && isdigit(_Peek(fptr)))) {
-            while (isalnum(c) || c == '.' || // maximal munch
-                   ((c == '+' || c == '-') && (tolower(prev) == 'e' || tolower(prev) == 'p'))) {
-                if (!(StringPush(&buf, c)))
-                    goto abort;
-                prev = c, c = _Next(fptr);
-            }
-            _Rewind(fptr, c); // overshot
-
-            if ((bad_index = _ParseConstant(buf, &token)) > 0) {
-                LogDetailedError(&(DetailedLog){
-                    .filename     = filepath,
-                    .line         = line,
-                    .error        = buf,
-                    .bad_index    = bad_index,
-                    .error_length = StringLength(buf) - bad_index,
-                    .explaination = token.data.str, // statically allocated don't worry
-                });
-            }
-
-            StringClear(&buf);
-
-            if (!(TokenVectorPush(token_vector, &token)))
+        switch (c) {
+            case '\'':
+            case '\"':
+            case '\?':
+            case '\\':
+                break;
+            case 'a':
+                c = '\a';
+                break;
+            case 'b':
+                c = '\b';
+                break;
+            case 'f':
+                c = '\f';
+                break;
+            case 'n':
+                c = '\n';
+                break;
+            case 'r':
+                c = '\r';
+                break;
+            case 't':
+                c = '\t';
+                break;
+            case 'v':
+                c = '\v';
+                break;
+            case 'x':
+                LOG_ERROR("%s", "hexidecimal escape sequences are WIP"); // TODO
+                EXPLICIT_FALLTHROUGH;
+            case '0':
+                LOG_ERROR("%s", "octal escape sequences are WIP"); // TODO
+                EXPLICIT_FALLTHROUGH;
+            default:
+                token->data.str = "invalid escape sequence";
                 goto abort;
-        } else if (isalpha(c)) {
-            if (c == 'L') {
-                peek = _Peek(fptr);
-                if (peek == '\'') {
-                    // long char
-                } else if (peek == '"') {
-                    // long str
-                }
-            }
-            // keyword or identifier
-        } else if (c == '\'') {
-            // char
-        } else if (c == '"') {
-            // str
-        } else {
-            // punctuator
         }
-
-        if (feof(fptr))
-            break;
     }
 
-    fclose(fptr);
+    if (str[i + 1] != '\'') {
+        token->data.str = "invalid char";
+        goto abort;
+    }
 
-    StringDestroy(buf);
+    token->type   = TOKEN_CHARACTER_CONSTANT;
+    token->data.c = c;
 
-    return true;
+    return -1;
 
 abort:
-    if (fptr)
-        fclose(fptr);
-
-    if (buf)
-        StringDestroy(buf);
-
-    return true;
+    return i;
 }
+
+ssize_t ParseLongChar(String str, Token* token) {
+    assert(str[0] == 'L');
+
+    ssize_t result, i = 1;
+
+    result      = ParseChar(&str[i], token);
+    token->type = TOKEN_WIDE_CHARACTER_CONSTANT;
+    return result < 0 ? result : result + i;
+}
+
+// bool ParseStr(void) { return true; }
+// bool ParseLongStr(void) { return true; }
+// bool ParseKeywordOrIdentifier(void) { return true; }
+// bool ParsePunctuator(void) { return true; }

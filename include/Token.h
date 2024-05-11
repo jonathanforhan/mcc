@@ -173,6 +173,7 @@ typedef struct Token {
     union {
         String str;
         char c;
+        wchar_t w;
         short s;
         int i;
         long l;
