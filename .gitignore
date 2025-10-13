@@ -1,9 +1,9 @@
-# IDE
-.idea
 .vs
 .vscode
-
-# BUILD
-.cache
-.compile_commands.json
-build*
+.idea
+out/
+*-build*/
+*build*/
+.cache/*
+compile_commands.json
+vcpkg_installed

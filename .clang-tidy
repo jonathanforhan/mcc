@@ -1,0 +1,39 @@
+---
+Checks: >
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  performance-*,
+  portability-*,
+  security-*,
+  modernize-use-nullptr,
+  modernize-use-bool-literals,
+  modernize-loop-convert,
+  modernize-use-emplace,
+  cppcoreguidelines-pro-type-cstyle-cast,
+  cppcoreguidelines-pro-type-const-cast,
+  cppcoreguidelines-pro-type-reinterpret-cast,
+  cppcoreguidelines-no-malloc,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-narrowing-conversions,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-special-member-functions,
+  cppcoreguidelines-virtual-class-destructor
+# misc-*
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+FormatStyle: none
+InheritParentConfig: true
+
+CheckOptions:
+  - key: bugprone-line-size.MaxLength
+    value: '200'
+  - key: bugprone-function-size.StatementThreshold
+    value: '500'
+  - key: bugprone-too-many-parameters.MaxParameters
+    value: '10'
+  # Don't warn about legitimate uses of reinterpret_cast in low-level code
+  - key: cppcoreguidelines-pro-type-reinterpret-cast.IgnoreWithinMethodCall
+    value: 'true'

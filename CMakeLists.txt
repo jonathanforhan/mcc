@@ -1,28 +1,57 @@
-cmake_minimum_required(VERSION 3.20)
-project(mcc VERSION 0.0.0 LANGUAGES C)
-
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+﻿cmake_minimum_required (VERSION 3.26)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# MCC Lib
-file(GLOB_RECURSE MCC_LIB_SOURCES "lib/*.c")
+project(MCC LANGUAGES C)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+set(MCC_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR}")
 
-add_library(mcc_lib SHARED ${MCC_LIB_SOURCES})
-target_include_directories(mcc_lib PUBLIC include)
+################################################################################
+# MCC
+################################################################################
+
+file(GLOB_RECURSE LIB_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/lib/*.c")
+add_library(mcc_lib STATIC ${LIB_SRCS})
+target_include_directories(mcc_lib
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/"
+)
+target_compile_definitions(
+    mcc_lib PUBLIC
+        $<$<CONFIG:Debug>:MCC_DEBUG>
+        $<$<CONFIG:Release>:MCC_RELEASE>
+)
 
 if (MSVC)
-    set(MCC_FLAGS "${CMAKE_C_FLAGS} /W4")
-else ()
-    set(MCC_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic")
-endif ()
-set_target_properties(mcc_lib PROPERTIES COMPILE_FLAGS ${MCC_FLAGS})
+    target_compile_options(
+    	mcc_lib PUBLIC
+    		/Zc:preprocessor
+    		/W4
+    )
+else()
+    target_compile_options(
+    	mcc_lib PUBLIC
+    		-Wall
+    		-Wextra
+    		-Wpedantic
+    		-Wconversion
+    )
+endif()
 
-# MCC APP
-# add_executable(mcc "mcc/mcc.c")
-# target_link_libraries(mcc PRIVATE mcc_lib)
+################################################################################
+# App
+################################################################################
 
-# MCC Tests
-enable_testing()
-add_subdirectory("test")
+file(GLOB_RECURSE APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/app/*.c")
+add_executable(mcc ${APP_SRCS})
+target_link_libraries(mcc PRIVATE mcc_lib)
+target_include_directories(mcc PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app/")
+
+################################################################################
+# TESTING
+################################################################################
+
+#enable_testing()
+add_subdirectory(tests)

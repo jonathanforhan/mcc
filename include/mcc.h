@@ -1,11 +1,6 @@
+/// @file include/mcc.h
+
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void InitializeMCC(void);
-
-#ifdef __cplusplus
-}
-#endif
+#include "../lib/defs.h"
+#include "../lib/lexer.h"

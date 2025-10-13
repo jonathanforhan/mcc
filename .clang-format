@@ -3,7 +3,7 @@ Language:        Cpp
 AccessModifierOffset: -4
 AlignAfterOpenBracket: Align
 AlignArrayOfStructures: None
-AlignConsecutiveMacros: None
+AlignConsecutiveMacros: Consecutive
 AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveBitFields: None
 AlignConsecutiveDeclarations: None
@@ -73,18 +73,34 @@ AllowAllConstructorInitializersOnNextLine: true
 FixNamespaceComments: true
 IncludeBlocks:   Preserve
 IncludeCategories:
-  - Regex:           '^<.*\.h>'
-    Priority:        1
-    SortPriority:    0
-    CaseSensitive:   false
-  - Regex:           '^<.*'
-    Priority:        2
-    SortPriority:    0
-    CaseSensitive:   false
-  - Regex:           '.*'
-    Priority:        3
-    SortPriority:    0
-    CaseSensitive:   false
+  - Regex: '^<[^.]*>$'
+    Priority: 1
+    SortPriority: 1
+    CaseSensitive: true
+  - Regex: '^<.*\.h>$'
+    Priority: 2
+    SortPriority: 2
+    CaseSensitive: true
+  - Regex: '^<.*\.(hh|hpp|hxx|h\+\+)>$'
+    Priority: 3
+    SortPriority: 3
+    CaseSensitive: true
+  - Regex: '^<.*\.cuh>$'
+    Priority: 4
+    SortPriority: 4
+    CaseSensitive: true
+  - Regex: '^".*\.h"$'
+    Priority: 5
+    SortPriority: 5
+    CaseSensitive: true
+  - Regex: '^".*\.(hh|hpp|hxx|h\+\+)"$'
+    Priority: 6
+    SortPriority: 6
+    CaseSensitive: true
+  - Regex: '^".*\.cuh"$'
+    Priority: 7
+    SortPriority: 7
+    CaseSensitive: true
 IncludeIsMainRegex: '([-_](test|unittest))?$'
 IncludeIsMainSourceRegex: ''
 IndentAccessModifiers: false
@@ -177,4 +193,3 @@ TabWidth:        8
 UseCRLF:         false
 UseTab:          Never
 ...
-

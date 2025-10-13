@@ -1,7 +1,5 @@
 set(TESTS
-    String
-    Vector
-    Scan
+    "lexer_test"
 )
 
 foreach(TEST IN LISTS TESTS)
@@ -17,3 +15,9 @@ foreach(TEST IN LISTS TESTS)
         COMMAND ${CMAKE_CTEST_COMMAND} -R "^${TEST}\$" --output-on-failure
     )
 endforeach()
+
+execute_process(
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+		"${CMAKE_CURRENT_SOURCE_DIR}/test_files"
+		"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test_files"
+)
