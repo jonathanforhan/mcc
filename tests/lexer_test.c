@@ -8,8 +8,122 @@
 
 static struct mcc_lexer lexer;
 
+// Helper function for keyword tests
+void _keyword_test_case(const char* src, enum mcc_keyword expected, bool is_keyword) {
+    lexer = (struct mcc_lexer){.source = (char*)src, .current = (char*)src};
+
+    struct mcc_token token = mcc_lexer_next_token(&lexer);
+
+    if (is_keyword) {
+        if (token.type == MCC_TOKEN_TYPE_KEYWORD) {
+            printf("'%s' -> keyword %d\n", src, token.value.keyword);
+            assert(token.value.keyword == expected && "Keyword mismatch");
+        } else {
+            printf("'%s' expected keyword, got type %d\n", src, token.type);
+            assert(false && "Expected keyword token");
+        }
+    } else {
+        if (token.type == MCC_TOKEN_TYPE_IDENTIFIER) {
+            printf("'%.*s' -> identifier (not keyword)\n", (int)token.lexeme.size, token.lexeme.data);
+        } else {
+            printf("'%s' expected identifier, got type %d\n", src, token.type);
+            assert(false && "Expected identifier token");
+        }
+    }
+}
+
+#define KEYWORD_TEST_CASE(src, expected)             _keyword_test_case(src, expected, true)
+#define IDENTIFIER_TEST_CASE(src)                    _keyword_test_case(src, 0, false)
+#define KEYWORD_TEST_CASE_WITH_SUFFIX(src, expected) _keyword_test_case(src, expected, true)
+
+void test_keyword_lexing() {
+    printf("\n=== Keyword Lexing Tests ===\n");
+
+    // Storage class specifiers
+    printf("Storage class specifiers:\n");
+    KEYWORD_TEST_CASE("auto", MCC_KEYWORD_AUTO);
+    KEYWORD_TEST_CASE("register", MCC_KEYWORD_REGISTER);
+    KEYWORD_TEST_CASE("static", MCC_KEYWORD_STATIC);
+    KEYWORD_TEST_CASE("extern", MCC_KEYWORD_EXTERN);
+    KEYWORD_TEST_CASE("typedef", MCC_KEYWORD_TYPEDEF);
+
+    // Type specifiers
+    printf("\nType specifiers:\n");
+    KEYWORD_TEST_CASE("void", MCC_KEYWORD_VOID);
+    KEYWORD_TEST_CASE("char", MCC_KEYWORD_CHAR);
+    KEYWORD_TEST_CASE("short", MCC_KEYWORD_SHORT);
+    KEYWORD_TEST_CASE("int", MCC_KEYWORD_INT);
+    KEYWORD_TEST_CASE("long", MCC_KEYWORD_LONG);
+    KEYWORD_TEST_CASE("float", MCC_KEYWORD_FLOAT);
+    KEYWORD_TEST_CASE("double", MCC_KEYWORD_DOUBLE);
+    KEYWORD_TEST_CASE("signed", MCC_KEYWORD_SIGNED);
+    KEYWORD_TEST_CASE("unsigned", MCC_KEYWORD_UNSIGNED);
+    KEYWORD_TEST_CASE("_Bool", MCC_KEYWORD_BOOL);
+    KEYWORD_TEST_CASE("_Complex", MCC_KEYWORD_COMPLEX);
+    KEYWORD_TEST_CASE("_Imaginary", MCC_KEYWORD_IMAGINARY);
+
+    // Type qualifiers
+    printf("\nType qualifiers:\n");
+    KEYWORD_TEST_CASE("const", MCC_KEYWORD_CONST);
+    KEYWORD_TEST_CASE("restrict", MCC_KEYWORD_RESTRICT);
+    KEYWORD_TEST_CASE("volatile", MCC_KEYWORD_VOLATILE);
+
+    // Function specifiers
+    printf("\nFunction specifiers:\n");
+    KEYWORD_TEST_CASE("inline", MCC_KEYWORD_INLINE);
+
+    // Control flow
+    printf("\nControl flow:\n");
+    KEYWORD_TEST_CASE("if", MCC_KEYWORD_IF);
+    KEYWORD_TEST_CASE("else", MCC_KEYWORD_ELSE);
+    KEYWORD_TEST_CASE("switch", MCC_KEYWORD_SWITCH);
+    KEYWORD_TEST_CASE("case", MCC_KEYWORD_CASE);
+    KEYWORD_TEST_CASE("default", MCC_KEYWORD_DEFAULT);
+    KEYWORD_TEST_CASE("while", MCC_KEYWORD_WHILE);
+    KEYWORD_TEST_CASE("do", MCC_KEYWORD_DO);
+    KEYWORD_TEST_CASE("for", MCC_KEYWORD_FOR);
+    KEYWORD_TEST_CASE("goto", MCC_KEYWORD_GOTO);
+    KEYWORD_TEST_CASE("continue", MCC_KEYWORD_CONTINUE);
+    KEYWORD_TEST_CASE("break", MCC_KEYWORD_BREAK);
+    KEYWORD_TEST_CASE("return", MCC_KEYWORD_RETURN);
+
+    // Aggregate types
+    printf("\nAggregate types:\n");
+    KEYWORD_TEST_CASE("struct", MCC_KEYWORD_STRUCT);
+    KEYWORD_TEST_CASE("union", MCC_KEYWORD_UNION);
+    KEYWORD_TEST_CASE("enum", MCC_KEYWORD_ENUM);
+
+    // Other
+    printf("\nOther:\n");
+    KEYWORD_TEST_CASE("sizeof", MCC_KEYWORD_SIZEOF);
+
+    printf("\n=== Non-Keyword Identifier Tests ===\n");
+
+    // These should be identifiers, not keywords
+    IDENTIFIER_TEST_CASE("integer");   // Not "int"
+    IDENTIFIER_TEST_CASE("returned");  // Not "return"
+    IDENTIFIER_TEST_CASE("iff");       // Not "if"
+    IDENTIFIER_TEST_CASE("whileloop"); // Not "while"
+    IDENTIFIER_TEST_CASE("_int");      // Underscore prefix
+    IDENTIFIER_TEST_CASE("int_");      // Underscore suffix
+    IDENTIFIER_TEST_CASE("Int");       // Wrong case
+    IDENTIFIER_TEST_CASE("INT");       // Wrong case
+    IDENTIFIER_TEST_CASE("my_var");
+    IDENTIFIER_TEST_CASE("x");
+    IDENTIFIER_TEST_CASE("foo123");
+    IDENTIFIER_TEST_CASE("_private");
+
+    printf("\n=== Edge Case Tests ===\n");
+
+    // Keywords at boundaries (with whitespace/punctuation)
+    KEYWORD_TEST_CASE_WITH_SUFFIX("int ", MCC_KEYWORD_INT);
+    KEYWORD_TEST_CASE_WITH_SUFFIX("return;", MCC_KEYWORD_RETURN);
+    KEYWORD_TEST_CASE_WITH_SUFFIX("if(", MCC_KEYWORD_IF);
+    KEYWORD_TEST_CASE_WITH_SUFFIX("struct{", MCC_KEYWORD_STRUCT);
+}
+
 void _constant_test_case(char* src, struct mcc_constant expected, bool is_constant) {
-    lexer = (struct mcc_lexer){.source = src, .current = src};
+    mcc_lexer_create(&lexer, src, strlen(src));
 
     struct mcc_token token = mcc_lexer_next_token(&lexer);
     if (token.type == MCC_TOKEN_TYPE_CONSTANT) {
@@ -57,6 +171,8 @@ void _constant_test_case(char* src, struct mcc_constant expected, bool is_consta
         printf("Skipping non-constant token: %.*s\n", (int)token.lexeme.size, token.lexeme.data);
         assert(!is_constant && "Test failed: Expected non-constant token");
     }
+
+    mcc_lexer_destroy(&lexer);
 }
 
 #define CONSTANT_TEST_CASE(src, type, member) \
@@ -64,7 +180,7 @@ void _constant_test_case(char* src, struct mcc_constant expected, bool is_consta
 #define CONSTANT_TEST_CASE_FAIL(src) _constant_test_case(src, (struct mcc_constant){0}, false)
 
 void test_integer_lexing() {
-    printf("=== Integer Constant Tests ===\n");
+    printf("\n=== Integer Constant Tests ===\n");
 
     // Basic decimal integers
     CONSTANT_TEST_CASE(0, MCC_CONSTANT_TYPE_INT, i);
@@ -245,6 +361,7 @@ void test_float_lexing() {
 }
 
 int main() {
+    test_keyword_lexing();
     test_integer_lexing();
     test_float_lexing();
     printf("\n=== All Tests Passed! ===\n");

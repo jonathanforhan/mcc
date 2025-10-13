@@ -195,41 +195,36 @@ static struct mcc_token scan_keyword_or_identifier(struct mcc_lexer* lexer) {
     }
 }
 
-static struct mcc_token parse_integer(struct mcc_string_view lexeme, int radix, int suffix_position) {
-    enum mcc_constant_type type = MCC_CONSTANT_TYPE_INT;
+static struct mcc_constant parse_integer(struct mcc_string_view lexeme, int radix, int suffix_position) {
+    struct mcc_constant constant = {.type = MCC_CONSTANT_TYPE_INT};
 
     if (suffix_position > 0) {
-        type = integer_suffix_lookup(lexeme.data + suffix_position, lexeme.size - suffix_position);
-        assert(type >= 0 && "must be valid");
+        constant.type = integer_suffix_lookup(lexeme.data + suffix_position, lexeme.size - suffix_position);
+        assert(constant.type >= 0 && "must be valid");
     }
     size_t number_end = (size_t)(suffix_position < 0 ? lexeme.size : suffix_position);
-
-    struct mcc_token token = {
-        .type  = MCC_TOKEN_TYPE_CONSTANT,
-        .value = {.constant = {.type = type}},
-    };
 
     char tmp                = lexeme.data[number_end];
     lexeme.data[number_end] = '\0'; // temporarily null-terminate the string for strto* family functions
 
-    switch (type) {
+    switch (constant.type) {
         case MCC_CONSTANT_TYPE_INT:
-            token.value.constant.value.i = (int)strtol(lexeme.data, NULL, radix);
+            constant.value.i = (int)strtol(lexeme.data, NULL, radix);
             break;
         case MCC_CONSTANT_TYPE_LONG_INT:
-            token.value.constant.value.l = strtol(lexeme.data, NULL, radix);
+            constant.value.l = strtol(lexeme.data, NULL, radix);
             break;
         case MCC_CONSTANT_TYPE_LONG_LONG_INT:
-            token.value.constant.value.ll = strtoll(lexeme.data, NULL, radix);
+            constant.value.ll = strtoll(lexeme.data, NULL, radix);
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_INT:
-            token.value.constant.value.u = (unsigned int)strtoul(lexeme.data, NULL, radix);
+            constant.value.u = (unsigned int)strtoul(lexeme.data, NULL, radix);
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT:
-            token.value.constant.value.ul = strtoul(lexeme.data, NULL, radix);
+            constant.value.ul = strtoul(lexeme.data, NULL, radix);
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT:
-            token.value.constant.value.ull = strtoull(lexeme.data, NULL, radix);
+            constant.value.ull = strtoull(lexeme.data, NULL, radix);
             break;
         default:
             assert(false);
@@ -237,35 +232,30 @@ static struct mcc_token parse_integer(struct mcc_string_view lexeme, int radix, 
 
     lexeme.data[number_end] = tmp; // restore original character
 
-    return token;
+    return constant;
 }
 
-static struct mcc_token parse_float(struct mcc_string_view lexeme, int suffix_position) {
-    enum mcc_constant_type type = MCC_CONSTANT_TYPE_DOUBLE;
+static struct mcc_constant parse_float(struct mcc_string_view lexeme, int suffix_position) {
+    struct mcc_constant constant = {.type = MCC_CONSTANT_TYPE_DOUBLE};
 
     if (suffix_position > 0) {
-        type = float_suffix_lookup(lexeme.data + suffix_position, lexeme.size - suffix_position);
-        assert(type >= 0 && "must be valid");
+        constant.type = float_suffix_lookup(lexeme.data + suffix_position, lexeme.size - suffix_position);
+        assert(constant.type >= 0 && "must be valid");
     }
     size_t number_end = (size_t)(suffix_position < 0 ? lexeme.size : suffix_position);
-
-    struct mcc_token token = {
-        .type  = MCC_TOKEN_TYPE_CONSTANT,
-        .value = {.constant = {.type = type}},
-    };
 
     char tmp                = lexeme.data[number_end];
     lexeme.data[number_end] = '\0'; // temporarily null-terminate the string for strto* family functions
 
-    switch (type) {
+    switch (constant.type) {
         case MCC_CONSTANT_TYPE_FLOAT:
-            token.value.constant.value.f = strtof(lexeme.data, NULL);
+            constant.value.f = strtof(lexeme.data, NULL);
             break;
         case MCC_CONSTANT_TYPE_DOUBLE:
-            token.value.constant.value.d = strtod(lexeme.data, NULL);
+            constant.value.d = strtod(lexeme.data, NULL);
             break;
         case MCC_CONSTANT_TYPE_LONG_DOUBLE:
-            token.value.constant.value.ld = strtold(lexeme.data, NULL);
+            constant.value.ld = strtold(lexeme.data, NULL);
             break;
         default:
             assert(false);
@@ -273,7 +263,7 @@ static struct mcc_token parse_float(struct mcc_string_view lexeme, int suffix_po
 
     lexeme.data[number_end] = tmp; // restore original character
 
-    return token;
+    return constant;
 }
 
 static struct mcc_token scan_number(struct mcc_lexer* lexer) {
@@ -355,7 +345,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
                 error_message = is_float ? "Invalid float literal suffix" : "Invalid integer literal suffix";
             }
             break; // finding a suffix ends the number
-        } else if (maybe_octal && !isodigit(curr(lexer))) {
+        } else if (maybe_octal && !isodigit(c)) {
             invalid_octal = true;
         }
 
@@ -386,17 +376,16 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
         };
     }
 
-    struct mcc_token token;
-    if (is_float) {
-        token = parse_float(lexeme, suffix_position);
-    } else {
-        token = parse_integer(lexeme, radix, suffix_position);
-    }
+    struct mcc_constant constant =
+        is_float ? parse_float(lexeme, suffix_position) : parse_integer(lexeme, radix, suffix_position);
 
-    token.lexeme = lexeme;
-    token.line   = state.line;
-    token.column = state.column;
-    return token;
+    return (struct mcc_token){
+        .type   = MCC_TOKEN_TYPE_CONSTANT,
+        .value  = {.constant = constant},
+        .lexeme = lexeme,
+        .line   = state.line,
+        .column = state.column,
+    };
 }
 
 static struct mcc_token scan_char(struct mcc_lexer* lexer) {
