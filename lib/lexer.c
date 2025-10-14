@@ -275,6 +275,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
     bool seen_decimal_point = false;
     bool seen_significand   = false;
 
+    bool is_hex        = false;
     bool maybe_octal   = false;
     bool invalid_octal = false;
 
@@ -286,7 +287,8 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
             if (!isxdigit(peek_n(lexer, 2))) {
                 error_message = "Invalid character sequence in number";
             }
-            radix = 16;
+            radix  = 16;
+            is_hex = true;
             next_n(lexer, 2);
         } else {
             radix       = 10;
@@ -305,46 +307,34 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
                 error_message = "Decimal point in exponent";
             }
             is_float = seen_decimal_point = true;
-        } else if ((radix != 16) && (c == 'e' || c == 'E')) {
+        } else if ((!is_hex && (c == 'e' || c == 'E')) || (is_hex && (c == 'p' || c == 'P'))) {
             if (seen_significand) {
                 error_message = "Invalid character sequence in number";
             }
             is_float = seen_significand = true;
 
-            if ((peek(lexer) == '+' || peek(lexer) == '-')) {
+            if (peek(lexer) == '+' || peek(lexer) == '-') {
                 c = next(lexer);
             }
 
             if (!isdigit(peek(lexer))) {
                 error_message = "Invalid character sequence in exponent";
             }
-        } else if ((radix == 16) && (c == 'p' || c == 'P')) {
-            if (seen_significand) {
-                error_message = "Invalid character sequence in number";
-            }
-            is_float = seen_significand = true;
-
-            if ((peek(lexer) == '+' || peek(lexer) == '-')) {
-                c = next(lexer);
-            }
-
-            if (!isdigit(peek(lexer))) {
-                error_message = "Invalid character sequence in exponent";
-            }
-        } else if (((seen_significand || radix == 10) && !isdigit(c)) || (radix == 16 && !isxdigit(c))) {
+        } else if (((!is_hex || seen_significand) && !isdigit(c)) || (is_hex && !isxdigit(c))) {
             suffix_position          = (int)(lexer->current - state.current);
             const char* suffix_start = lexer->current;
             do {
                 c = next(lexer);
             } while (isalnum(c) || c == '.');
             const char* suffix_end = lexer->current;
+            size_t suffix_len      = (size_t)(suffix_end - suffix_start);
 
-            enum mcc_constant_type type = is_float ? float_suffix_lookup(suffix_start, suffix_end - suffix_start)
-                                                   : integer_suffix_lookup(suffix_start, suffix_end - suffix_start);
+            enum mcc_constant_type type = is_float ? float_suffix_lookup(suffix_start, suffix_len)
+                                                   : integer_suffix_lookup(suffix_start, suffix_len);
             if (type < 0) {
                 error_message = is_float ? "Invalid float literal suffix" : "Invalid integer literal suffix";
             }
-            break; // finding a suffix ends the number
+            break; // finding a suffix ends the number (and we already are past the lexeme)
         } else if (maybe_octal && !isodigit(c)) {
             invalid_octal = true;
         }
@@ -357,7 +347,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
         .size = lexer->current - state.current,
     };
 
-    if ((radix == 16) && seen_decimal_point && !seen_significand) {
+    if (is_hex && seen_decimal_point && !seen_significand) {
         error_message = "Hexadecimal floating point is not valid outside of binary exponentials";
     } else if (maybe_octal && !is_float) {
         radix = 8;
