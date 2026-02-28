@@ -8,12 +8,35 @@
 #include "defs.h"
 #include "private/utils.h"
 
-struct keyword_entry {
-    const char* text;
-    enum mcc_keyword keyword;
+#ifdef _MSC_VER
+#define strcasecmp  _stricmp
+#define strncasecmp _strnicmp
+#endif
+
+struct table_entry {
+    const char* key;
+    int value;
 };
 
-static const struct keyword_entry keyword_table[] = {
+static int table_lookup(const struct table_entry* table, const char* str, size_t len) {
+    for (; table->key != NULL; table++) {
+        if ((strncmp(table->key, str, len) == 0) && (strnlen(table->key, len + 1) == len)) {
+            break;
+        }
+    }
+    return table->value;
+}
+
+static int table_caseless_lookup(const struct table_entry* table, const char* str, size_t len) {
+    for (; table->key != NULL; table++) {
+        if ((strncasecmp(table->key, str, len) == 0) && (strlen(table->key) == len)) {
+            break;
+        }
+    }
+    return table->value;
+}
+
+static const struct table_entry keyword_table[] = {
     {"auto", MCC_KEYWORD_AUTO},
     {"break", MCC_KEYWORD_BREAK},
     {"case", MCC_KEYWORD_CASE},
@@ -51,27 +74,10 @@ static const struct keyword_entry keyword_table[] = {
     {"_Bool", MCC_KEYWORD_BOOL},
     {"_Complex", MCC_KEYWORD_COMPLEX},
     {"_Imaginary", MCC_KEYWORD_IMAGINARY},
+    {NULL, -1},
 };
 
-static enum mcc_keyword keyword_lookup(const char* str, size_t len) {
-    for (size_t i = 0; i < ARRAY_SIZE(keyword_table); i++) {
-        if (strlen(keyword_table[i].text) != len) {
-            continue;
-        }
-
-        if (strncmp(keyword_table[i].text, str, len) == 0) {
-            return keyword_table[i].keyword;
-        }
-    }
-    return MCC_KEYWORD_NOT_FOUND;
-}
-
-struct suffix_entry {
-    const char* text;
-    enum mcc_constant_type type;
-};
-
-static const struct suffix_entry integer_suffix_table[] = {
+static const struct table_entry integer_suffix_table[] = {
     {"U", MCC_CONSTANT_TYPE_UNSIGNED_INT},
     {"L", MCC_CONSTANT_TYPE_LONG_INT},
     {"UL", MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT},
@@ -79,53 +85,43 @@ static const struct suffix_entry integer_suffix_table[] = {
     {"LL", MCC_CONSTANT_TYPE_LONG_LONG_INT},
     {"ULL", MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT},
     {"LLU", MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT},
+    {NULL, -1},
 };
 
-static enum mcc_constant_type integer_suffix_lookup(const char* str, size_t len) {
-    if (len > 3) {
-        return -1; // No valid suffix is longer than 3 characters
-    }
-
-    char suffix[4] = {0};
-    for (size_t i = 0; i < len; i++) {
-        suffix[i] = (char)toupper(str[i]);
-    }
-
-    for (size_t i = 0; i < ARRAY_SIZE(integer_suffix_table); i++) {
-        if (strlen(integer_suffix_table[i].text) != len) {
-            continue;
-        }
-
-        if (strncmp(integer_suffix_table[i].text, suffix, len) == 0) {
-            return integer_suffix_table[i].type;
-        }
-    }
-    return -1;
-}
-
-static const struct suffix_entry float_suffix_table[] = {
+static const struct table_entry float_suffix_table[] = {
     {"F", MCC_CONSTANT_TYPE_FLOAT},
     {"L", MCC_CONSTANT_TYPE_LONG_DOUBLE},
+    {NULL, -1},
 };
 
-static enum mcc_constant_type float_suffix_lookup(const char* str, size_t len) {
-    if (len > 1) {
-        return -1; // No valid suffix is longer than 1 character
-    }
-
-    char suffix[2] = {(char)toupper(str[0]), '\0'};
-
-    for (size_t i = 0; i < ARRAY_SIZE(float_suffix_table); i++) {
-        if (strlen(float_suffix_table[i].text) != len) {
-            continue;
-        }
-
-        if (strncmp(float_suffix_table[i].text, suffix, len) == 0) {
-            return float_suffix_table[i].type;
-        }
-    }
-    return -1;
+static enum mcc_keyword keyword_lookup(const char* str, size_t len) {
+    // No valid keyword is longer than 10 characters
+    return (len > 10) ? -1 : table_lookup(keyword_table, str, len);
 }
+
+static enum mcc_constant_type integer_suffix_lookup(const char* str, size_t len) {
+    // No valid suffix is longer than 3 characters
+    return (len > 3) ? -1 : table_caseless_lookup(integer_suffix_table, str, len);
+}
+
+static enum mcc_constant_type float_suffix_lookup(const char* str, size_t len) {
+    // No valid suffix is longer than 1 character
+    return (len > 1) ? -1 : table_caseless_lookup(float_suffix_table, str, len);
+}
+
+static const char escape_sequences[256] = {
+    ['\''] = '\'',
+    ['\"'] = '\"',
+    ['\?'] = '\?',
+    ['\\'] = '\\',
+    ['a']  = '\a',
+    ['b']  = '\b',
+    ['f']  = '\f',
+    ['n']  = '\n',
+    ['r']  = '\r',
+    ['t']  = '\t',
+    ['v']  = '\v',
+};
 
 static char curr(struct mcc_lexer* lexer) {
     return *lexer->current;
@@ -282,23 +278,24 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
     int radix           = 10;
     int suffix_position = -1;
 
-    if (curr(lexer) == '0') {
-        if (peek(lexer) == 'x' || peek(lexer) == 'X') {
-            if (!isxdigit(peek_n(lexer, 2))) {
+    char c = curr(lexer);
+
+    if (c == '0') {
+        c = next(lexer);
+        if (c == 'x' || c == 'X') {
+            c = next(lexer);
+            if (!isxdigit(c)) {
                 error_message = "Invalid character sequence in number";
             }
             radix  = 16;
             is_hex = true;
-            next_n(lexer, 2);
         } else {
             radix       = 10;
             maybe_octal = true; // could be octal (01) or decimal float (0.1)
-            next(lexer);
         }
     }
 
     // maximal munch
-    char c = curr(lexer);
     while (isalnum(c) || c == '.') {
         if (c == '.') {
             if (seen_decimal_point) {
@@ -381,9 +378,109 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
 static struct mcc_token scan_char(struct mcc_lexer* lexer) {
     const struct mcc_lexer state = *lexer;
 
+    const char* error_message = NULL; // setting this to non-NULL indicates an error / invalid token
+
+    bool is_wide = false;
+    int ret      = 0;
+
+    char c = curr(lexer);
+
+    if (c == 'L') {
+        c       = next(lexer);
+        is_wide = true;
+    }
+    assert(c == '\'' && "must start with single quote");
+    c = next(lexer);
+
+    if (c == '\\') {
+        // escape sequence
+        c = next(lexer);
+        if (escape_sequences[(unsigned char)c] != 0) {
+            ret = escape_sequences[(unsigned char)c];
+            c   = next(lexer);
+        } else if (isodigit(c)) {
+            // octal escape sequence
+            int digits = 0;
+            while (isodigit(c)) {
+                ret = (ret << 3) | (c - '0');
+                c   = next(lexer);
+                digits++;
+            }
+            if (digits > 6) {
+                error_message = "Octal escape sequence out of range";
+            }
+        } else if (c == 'u' || c == 'U') {
+            // universal escape sequence
+            c          = next(lexer);
+            int digits = 0;
+            while (isxdigit(c)) {
+                ret = (ret << 4) | (isdigit(c) ? (c - '0') : (toupper(c) - 'A' + 10));
+                c   = next(lexer);
+                digits++;
+            }
+            if (digits != 4) {
+                error_message = "Invalid universal escape sequence";
+            }
+        } else if (c == 'x' || c == 'X') {
+            // hexadecimal escape sequence
+            c          = next(lexer);
+            int digits = 0;
+            while (isxdigit(c)) {
+                ret = (ret << 4) | (isdigit(c) ? (c - '0') : (toupper(c) - 'A' + 10));
+                c   = next(lexer);
+                digits++;
+            }
+            if (digits == 0) {
+                error_message = "Invalid hexadecimal escape sequence";
+            }
+        } else {
+            // invalid escape sequence
+            error_message = "Invalid escape sequence";
+        }
+    } else if (c >= 32 && c != 127) {
+        // regular character
+        ret = c;
+        c   = next(lexer);
+    } else {
+        // control character
+        error_message = "Invalid character in character literal";
+    }
+
+    if (c != '\'') {
+        error_message = "Unterminated character literal";
+        do {
+            c = next(lexer);
+        } while (c != '\'' && c != '\0');
+    } else {
+        c = next(lexer);
+    }
+
+    if (error_message) {
+        return (struct mcc_token){
+            .type   = MCC_TOKEN_TYPE_INVALID,
+            .value  = {.error_message = error_message},
+            .lexeme = {.data = state.current, .size = (size_t)(lexer->current - state.current)},
+            .line   = state.line,
+            .column = state.column,
+        };
+    }
+
+    struct mcc_constant constant;
+    if (is_wide) {
+        constant = (struct mcc_constant){
+            .type  = MCC_CONSTANT_TYPE_WIDE_CHAR,
+            .value = {.wc = ret},
+        };
+    } else {
+        constant = (struct mcc_constant){
+            .type  = MCC_CONSTANT_TYPE_CHAR,
+            .value = {.c = ret},
+        };
+    }
+
     return (struct mcc_token){
-        .type   = MCC_TOKEN_TYPE_INVALID,
-        .value  = {.error_message = "TODO"},
+        .type   = MCC_TOKEN_TYPE_CONSTANT,
+        .value  = {.constant = constant},
         .lexeme = {.data = state.current, .size = (size_t)(lexer->current - state.current)},
         .line   = state.line,
         .column = state.column,
@@ -392,6 +489,8 @@ static struct mcc_token scan_char(struct mcc_lexer* lexer) {
 
 static struct mcc_token scan_string(struct mcc_lexer* lexer) {
     const struct mcc_lexer state = *lexer;
+
+    next(lexer); // TODO
 
     return (struct mcc_token){
         .type   = MCC_TOKEN_TYPE_INVALID,
@@ -405,9 +504,276 @@ static struct mcc_token scan_string(struct mcc_lexer* lexer) {
 static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
     const struct mcc_lexer state = *lexer;
 
+    enum mcc_punctuator punctuator;
+    char c = curr(lexer);
+
+    switch (c) {
+        case '!':
+            c = next(lexer);
+            switch (c) {
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_BANG_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_BANG;
+                    break;
+            }
+            break;
+        case '#':
+            c = next(lexer);
+            switch (c) {
+                case '#':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_HASH_HASH;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_HASH;
+                    break;
+            }
+            break;
+        case '%':
+            c = next(lexer);
+            switch (c) {
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_PERCENT_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_PERCENT;
+                    break;
+            }
+            break;
+        case '&':
+            c = next(lexer);
+            switch (c) {
+                case '&':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_AMPERSAND_AMPERSAND;
+                    break;
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_AMPERSAND_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_AMPERSAND;
+                    break;
+            }
+            break;
+        case '(':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_LEFT_PARENTHESIS;
+            break;
+        case ')':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_RIGHT_PARENTHESIS;
+            break;
+        case '*':
+            c = next(lexer);
+            switch (c) {
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_ASTERISK_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_ASTERISK;
+                    break;
+            }
+            break;
+        case '+':
+            c = next(lexer);
+            switch (c) {
+                case '+':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_PLUS_PLUS;
+                    break;
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_PLUS_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_PLUS;
+                    break;
+            }
+            break;
+        case ',':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_COMMA;
+            break;
+        case '-':
+            c = next(lexer);
+            switch (c) {
+                case '-':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_MINUS_MINUS;
+                    break;
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_MINUS_EQUAL;
+                    break;
+                case '>':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_ARROW;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_MINUS;
+                    break;
+            }
+            break;
+        case '.':
+            c = next(lexer);
+            if (c == '.' && peek(lexer) == '.') {
+                c          = next_n(lexer, 2);
+                punctuator = MCC_PUNCTUATOR_ELLIPSIS;
+            } else {
+                punctuator = MCC_PUNCTUATOR_DOT;
+            }
+            break;
+        case '/':
+            c = next(lexer);
+            switch (c) {
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_SLASH_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_SLASH;
+                    break;
+            }
+            break;
+        case ':':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_COLON;
+            break;
+        case ';':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_SEMICOLON;
+            break;
+        case '<':
+            c = next(lexer);
+            switch (c) {
+                case '<':
+                    c = next(lexer);
+                    switch (c) {
+                        case '=':
+                            c          = next(lexer);
+                            punctuator = MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON_EQUAL;
+                            break;
+                        default:
+                            punctuator = MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON;
+                            break;
+                    }
+                    break;
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_LEFT_CHEVRON_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_LEFT_CHEVRON;
+                    break;
+            }
+            break;
+        case '=':
+            c = next(lexer);
+            switch (c) {
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_EQUAL_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_EQUAL;
+                    break;
+            }
+            break;
+        case '>':
+            c = next(lexer);
+            switch (c) {
+                case '>':
+                    c = next(lexer);
+                    switch (c) {
+                        case '=':
+                            c          = next(lexer);
+                            punctuator = MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON_EQUAL;
+                            break;
+                        default:
+                            punctuator = MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON;
+                            break;
+                    }
+                    break;
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_RIGHT_CHEVRON_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_RIGHT_CHEVRON;
+                    break;
+            }
+            break;
+        case '?':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_QUESTION_MARK;
+            break;
+        case '[':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_LEFT_BRACKET;
+            break;
+        case ']':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_RIGHT_BRACKET;
+            break;
+        case '^':
+            c = next(lexer);
+            switch (c) {
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_CARET_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_CARET;
+                    break;
+            }
+            break;
+        case '{':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_LEFT_BRACE;
+            break;
+        case '|':
+            c = next(lexer);
+            switch (c) {
+                case '|':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_PIPE_PIPE;
+                    break;
+                case '=':
+                    c          = next(lexer);
+                    punctuator = MCC_PUNCTUATOR_PIPE_EQUAL;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_PIPE;
+                    break;
+            }
+            break;
+        case '}':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_RIGHT_BRACE;
+            break;
+        case '~':
+            c          = next(lexer);
+            punctuator = MCC_PUNCTUATOR_TILDE;
+            break;
+        default:
+            return (struct mcc_token){
+                .type   = MCC_TOKEN_TYPE_INVALID,
+                .value  = {.error_message = "Invalid character sequence"},
+                .lexeme = {.data = state.current, .size = (size_t)(lexer->current - state.current)},
+                .line   = state.line,
+                .column = state.column,
+            };
+    }
+
     return (struct mcc_token){
-        .type   = MCC_TOKEN_TYPE_INVALID,
-        .value  = {.error_message = "TODO"},
+        .type   = MCC_TOKEN_TYPE_PUNCTUATOR,
+        .value  = {.punctuator = punctuator},
         .lexeme = {.data = state.current, .size = (size_t)(lexer->current - state.current)},
         .line   = state.line,
         .column = state.column,
@@ -474,15 +840,12 @@ struct mcc_token mcc_lexer_next_token(struct mcc_lexer* lexer) {
     }
 
     if (c == '\'' || (c == 'L' && peek(lexer) == '\'')) {
-        next(lexer);
         return scan_char(lexer);
     }
 
     if (c == '\"' || (c == 'L' && peek(lexer) == '\"')) {
-        next(lexer);
         return scan_string(lexer);
     }
 
-    next(lexer);
     return scan_punctuator(lexer);
 }

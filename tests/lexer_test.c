@@ -1,16 +1,17 @@
+#include <assert.h>
 #include <defs.h>
 #include <lexer.h>
 #include <mcc.h>
 #include <private/utils.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <lexer.c>
 
 static struct mcc_lexer lexer;
 
 // Helper function for keyword tests
-void _keyword_test_case(const char* src, enum mcc_keyword expected, bool is_keyword) {
-    lexer = (struct mcc_lexer){.source = (char*)src, .current = (char*)src};
+void _keyword_test_case(char* src, enum mcc_keyword expected, bool is_keyword) {
+    lexer = (struct mcc_lexer){.source = src, .current = src};
 
     struct mcc_token token = mcc_lexer_next_token(&lexer);
 
@@ -31,10 +32,88 @@ void _keyword_test_case(const char* src, enum mcc_keyword expected, bool is_keyw
         }
     }
 }
-
 #define KEYWORD_TEST_CASE(src, expected)             _keyword_test_case(src, expected, true)
 #define IDENTIFIER_TEST_CASE(src)                    _keyword_test_case(src, 0, false)
 #define KEYWORD_TEST_CASE_WITH_SUFFIX(src, expected) _keyword_test_case(src, expected, true)
+
+void _constant_test_case(char* src, struct mcc_constant expected, bool is_constant) {
+    mcc_lexer_create(&lexer, src, strlen(src));
+
+    struct mcc_token token = mcc_lexer_next_token(&lexer);
+    if (token.type == MCC_TOKEN_TYPE_CONSTANT) {
+        switch (token.value.constant.type) {
+            case MCC_CONSTANT_TYPE_ENUM:
+            case MCC_CONSTANT_TYPE_CHAR:
+            case MCC_CONSTANT_TYPE_SIGNED_CHAR:
+            case MCC_CONSTANT_TYPE_UNSIGNED_CHAR:
+            case MCC_CONSTANT_TYPE_WIDE_CHAR:
+                printf("TODO\n");
+                break;
+            case MCC_CONSTANT_TYPE_INT:
+                printf("i   %i %i\n", expected.value.i, token.value.constant.value.i);
+                break;
+            case MCC_CONSTANT_TYPE_LONG_INT:
+                printf("l   %li %li\n", expected.value.l, token.value.constant.value.l);
+                break;
+            case MCC_CONSTANT_TYPE_LONG_LONG_INT:
+                printf("ll  %lli %lli\n", expected.value.ll, token.value.constant.value.ll);
+                break;
+            case MCC_CONSTANT_TYPE_UNSIGNED_INT:
+                printf("u   %u %u\n", expected.value.u, token.value.constant.value.u);
+                break;
+            case MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT:
+                printf("ul  %lu %lu\n", expected.value.ul, token.value.constant.value.ul);
+                break;
+            case MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT:
+                printf("ull %llu %llu\n", expected.value.ull, token.value.constant.value.ull);
+                break;
+            case MCC_CONSTANT_TYPE_FLOAT:
+                printf("f   %f %f\n", expected.value.f, token.value.constant.value.f);
+                break;
+            case MCC_CONSTANT_TYPE_DOUBLE:
+                printf("d   %f %f\n", expected.value.d, token.value.constant.value.d);
+                break;
+            case MCC_CONSTANT_TYPE_LONG_DOUBLE:
+                printf("ld  %Lf %Lf\n", expected.value.ld, token.value.constant.value.ld);
+                break;
+        }
+
+        assert(is_constant && "Test failed: Expected constant token");
+        assert(expected.type == token.value.constant.type && "Test failed: Type mismatch");
+        assert(expected.value.ld == token.value.constant.value.ld && "Test failed: Value mismatch");
+    } else {
+        printf("Skipping non-constant token: %.*s\n", (int)token.lexeme.size, token.lexeme.data);
+        assert(!is_constant && "Test failed: Expected non-constant token");
+    }
+
+    mcc_lexer_destroy(&lexer);
+}
+#define CONSTANT_TEST_CASE(src, type, member) \
+    _constant_test_case(#src, (struct mcc_constant){type, {.member = src}}, true)
+#define CONSTANT_TEST_CASE_FAIL(src) _constant_test_case(src, (struct mcc_constant){0}, false)
+
+void _punctuator_test_case(const char* src, enum mcc_punctuator expected, bool is_punctuator) {
+    mcc_lexer_create(&lexer, src, strlen(src));
+
+    struct mcc_token token = mcc_lexer_next_token(&lexer);
+
+    if (is_punctuator) {
+        if (token.type == MCC_TOKEN_TYPE_PUNCTUATOR) {
+            printf("'%s' -> punctuator %d\n", src, token.value.punctuator);
+            assert(token.value.punctuator == expected && "Punctuator mismatch");
+        } else {
+            printf("'%s' expected punctuator, got type %d\n", src, token.type);
+            assert(false && "Expected punctuator token");
+        }
+    } else {
+        printf("'%s' should be invalid\n", src);
+        assert(token.type == MCC_TOKEN_TYPE_INVALID && "Expected invalid token");
+    }
+
+    mcc_lexer_destroy(&lexer);
+}
+#define PUNCTUATOR_TEST_CASE(src, expected) _punctuator_test_case(src, expected, true)
+#define PUNCTUATOR_TEST_CASE_FAIL(src)      _punctuator_test_case(src, 0, false)
 
 void test_keyword_lexing() {
     printf("\n=== Keyword Lexing Tests ===\n");
@@ -121,63 +200,6 @@ void test_keyword_lexing() {
     KEYWORD_TEST_CASE_WITH_SUFFIX("if(", MCC_KEYWORD_IF);
     KEYWORD_TEST_CASE_WITH_SUFFIX("struct{", MCC_KEYWORD_STRUCT);
 }
-
-void _constant_test_case(char* src, struct mcc_constant expected, bool is_constant) {
-    mcc_lexer_create(&lexer, src, strlen(src));
-
-    struct mcc_token token = mcc_lexer_next_token(&lexer);
-    if (token.type == MCC_TOKEN_TYPE_CONSTANT) {
-        switch (token.value.constant.type) {
-            case MCC_CONSTANT_TYPE_ENUM:
-            case MCC_CONSTANT_TYPE_CHAR:
-            case MCC_CONSTANT_TYPE_SIGNED_CHAR:
-            case MCC_CONSTANT_TYPE_UNSIGNED_CHAR:
-            case MCC_CONSTANT_TYPE_WIDE_CHAR:
-                printf("TODO\n");
-                break;
-            case MCC_CONSTANT_TYPE_INT:
-                printf("i   %i %i\n", expected.value.i, token.value.constant.value.i);
-                break;
-            case MCC_CONSTANT_TYPE_LONG_INT:
-                printf("l   %li %li\n", expected.value.l, token.value.constant.value.l);
-                break;
-            case MCC_CONSTANT_TYPE_LONG_LONG_INT:
-                printf("ll  %lli %lli\n", expected.value.ll, token.value.constant.value.ll);
-                break;
-            case MCC_CONSTANT_TYPE_UNSIGNED_INT:
-                printf("u   %u %u\n", expected.value.u, token.value.constant.value.u);
-                break;
-            case MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT:
-                printf("ul  %lu %lu\n", expected.value.ul, token.value.constant.value.ul);
-                break;
-            case MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT:
-                printf("ull %llu %llu\n", expected.value.ull, token.value.constant.value.ull);
-                break;
-            case MCC_CONSTANT_TYPE_FLOAT:
-                printf("f   %f %f\n", expected.value.f, token.value.constant.value.f);
-                break;
-            case MCC_CONSTANT_TYPE_DOUBLE:
-                printf("d   %f %f\n", expected.value.d, token.value.constant.value.d);
-                break;
-            case MCC_CONSTANT_TYPE_LONG_DOUBLE:
-                printf("ld  %Lf %Lf\n", expected.value.ld, token.value.constant.value.ld);
-                break;
-        }
-
-        assert(is_constant && "Test failed: Expected constant token");
-        assert(expected.type == token.value.constant.type && "Test failed: Type mismatch");
-        assert(expected.value.ld == token.value.constant.value.ld && "Test failed: Value mismatch");
-    } else {
-        printf("Skipping non-constant token: %.*s\n", (int)token.lexeme.size, token.lexeme.data);
-        assert(!is_constant && "Test failed: Expected non-constant token");
-    }
-
-    mcc_lexer_destroy(&lexer);
-}
-
-#define CONSTANT_TEST_CASE(src, type, member) \
-    _constant_test_case(#src, (struct mcc_constant){type, {.member = src}}, true)
-#define CONSTANT_TEST_CASE_FAIL(src) _constant_test_case(src, (struct mcc_constant){0}, false)
 
 void test_integer_lexing() {
     printf("\n=== Integer Constant Tests ===\n");
@@ -360,10 +382,119 @@ void test_float_lexing() {
     CONSTANT_TEST_CASE_FAIL("2.5ll");
 }
 
+void test_punctuator_lexing() {
+    printf("\n=== Punctuator Lexing Tests ===\n");
+
+    // Single character punctuators
+    printf("\nSingle character:\n");
+    PUNCTUATOR_TEST_CASE("(", MCC_PUNCTUATOR_LEFT_PARENTHESIS);
+    PUNCTUATOR_TEST_CASE(")", MCC_PUNCTUATOR_RIGHT_PARENTHESIS);
+    PUNCTUATOR_TEST_CASE("{", MCC_PUNCTUATOR_LEFT_BRACE);
+    PUNCTUATOR_TEST_CASE("}", MCC_PUNCTUATOR_RIGHT_BRACE);
+    PUNCTUATOR_TEST_CASE("[", MCC_PUNCTUATOR_LEFT_BRACKET);
+    PUNCTUATOR_TEST_CASE("]", MCC_PUNCTUATOR_RIGHT_BRACKET);
+    PUNCTUATOR_TEST_CASE(";", MCC_PUNCTUATOR_SEMICOLON);
+    PUNCTUATOR_TEST_CASE(",", MCC_PUNCTUATOR_COMMA);
+    PUNCTUATOR_TEST_CASE(":", MCC_PUNCTUATOR_COLON);
+    PUNCTUATOR_TEST_CASE("?", MCC_PUNCTUATOR_QUESTION_MARK);
+    PUNCTUATOR_TEST_CASE("~", MCC_PUNCTUATOR_TILDE);
+
+    // Single or double character (no equals)
+    printf("\nSingle or double (no =):\n");
+    PUNCTUATOR_TEST_CASE(".", MCC_PUNCTUATOR_DOT);
+    PUNCTUATOR_TEST_CASE("&", MCC_PUNCTUATOR_AMPERSAND);
+    PUNCTUATOR_TEST_CASE("&&", MCC_PUNCTUATOR_AMPERSAND_AMPERSAND);
+    PUNCTUATOR_TEST_CASE("|", MCC_PUNCTUATOR_PIPE);
+    PUNCTUATOR_TEST_CASE("||", MCC_PUNCTUATOR_PIPE_PIPE);
+    PUNCTUATOR_TEST_CASE("#", MCC_PUNCTUATOR_HASH);
+    PUNCTUATOR_TEST_CASE("##", MCC_PUNCTUATOR_HASH_HASH);
+
+    // Arithmetic operators
+    printf("\nArithmetic operators:\n");
+    PUNCTUATOR_TEST_CASE("+", MCC_PUNCTUATOR_PLUS);
+    PUNCTUATOR_TEST_CASE("++", MCC_PUNCTUATOR_PLUS_PLUS);
+    PUNCTUATOR_TEST_CASE("+=", MCC_PUNCTUATOR_PLUS_EQUAL);
+    PUNCTUATOR_TEST_CASE("-", MCC_PUNCTUATOR_MINUS);
+    PUNCTUATOR_TEST_CASE("--", MCC_PUNCTUATOR_MINUS_MINUS);
+    PUNCTUATOR_TEST_CASE("-=", MCC_PUNCTUATOR_MINUS_EQUAL);
+    PUNCTUATOR_TEST_CASE("->", MCC_PUNCTUATOR_ARROW);
+    PUNCTUATOR_TEST_CASE("*", MCC_PUNCTUATOR_ASTERISK);
+    PUNCTUATOR_TEST_CASE("*=", MCC_PUNCTUATOR_ASTERISK_EQUAL);
+    PUNCTUATOR_TEST_CASE("/", MCC_PUNCTUATOR_SLASH);
+    PUNCTUATOR_TEST_CASE("/=", MCC_PUNCTUATOR_SLASH_EQUAL);
+    PUNCTUATOR_TEST_CASE("%", MCC_PUNCTUATOR_PERCENT);
+    PUNCTUATOR_TEST_CASE("%=", MCC_PUNCTUATOR_PERCENT_EQUAL);
+
+    // Comparison operators
+    printf("\nComparison operators:\n");
+    PUNCTUATOR_TEST_CASE("=", MCC_PUNCTUATOR_EQUAL);
+    PUNCTUATOR_TEST_CASE("==", MCC_PUNCTUATOR_EQUAL_EQUAL);
+    PUNCTUATOR_TEST_CASE("!", MCC_PUNCTUATOR_BANG);
+    PUNCTUATOR_TEST_CASE("!=", MCC_PUNCTUATOR_BANG_EQUAL);
+    PUNCTUATOR_TEST_CASE("<", MCC_PUNCTUATOR_LEFT_CHEVRON);
+    PUNCTUATOR_TEST_CASE("<=", MCC_PUNCTUATOR_LEFT_CHEVRON_EQUAL);
+    PUNCTUATOR_TEST_CASE(">", MCC_PUNCTUATOR_RIGHT_CHEVRON);
+    PUNCTUATOR_TEST_CASE(">=", MCC_PUNCTUATOR_RIGHT_CHEVRON_EQUAL);
+
+    // Bitwise operators
+    printf("\nBitwise operators:\n");
+    PUNCTUATOR_TEST_CASE("^", MCC_PUNCTUATOR_CARET);
+    PUNCTUATOR_TEST_CASE("^=", MCC_PUNCTUATOR_CARET_EQUAL);
+    PUNCTUATOR_TEST_CASE("&=", MCC_PUNCTUATOR_AMPERSAND_EQUAL);
+    PUNCTUATOR_TEST_CASE("|=", MCC_PUNCTUATOR_PIPE_EQUAL);
+
+    // Shift operators
+    printf("\nShift operators:\n");
+    PUNCTUATOR_TEST_CASE("<<", MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON);
+    PUNCTUATOR_TEST_CASE("<<=", MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON_EQUAL);
+    PUNCTUATOR_TEST_CASE(">>", MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON);
+    PUNCTUATOR_TEST_CASE(">>=", MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON_EQUAL);
+
+    // Special
+    printf("\nSpecial:\n");
+    PUNCTUATOR_TEST_CASE("...", MCC_PUNCTUATOR_ELLIPSIS);
+
+    printf("\n=== Maximal Munch Tests ===\n");
+
+    // Test that longer sequences are matched correctly
+    printf("\nEnsure maximal munch works:\n");
+    PUNCTUATOR_TEST_CASE("++", MCC_PUNCTUATOR_PLUS_PLUS);                   // Not + +
+    PUNCTUATOR_TEST_CASE("--", MCC_PUNCTUATOR_MINUS_MINUS);                 // Not - -
+    PUNCTUATOR_TEST_CASE("->", MCC_PUNCTUATOR_ARROW);                       // Not - >
+    PUNCTUATOR_TEST_CASE("<<=", MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON_EQUAL);  // Not << =
+    PUNCTUATOR_TEST_CASE(">>=", MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON_EQUAL); // Not >> =
+    PUNCTUATOR_TEST_CASE("&&", MCC_PUNCTUATOR_AMPERSAND_AMPERSAND);         // Not & &
+    PUNCTUATOR_TEST_CASE("||", MCC_PUNCTUATOR_PIPE_PIPE);                   // Not | |
+    PUNCTUATOR_TEST_CASE("==", MCC_PUNCTUATOR_EQUAL_EQUAL);                 // Not = =
+    PUNCTUATOR_TEST_CASE("!=", MCC_PUNCTUATOR_BANG_EQUAL);                  // Not ! =
+    PUNCTUATOR_TEST_CASE("...", MCC_PUNCTUATOR_ELLIPSIS);                   // Not . . .
+
+    printf("\n=== Invalid Punctuator Tests ===\n");
+
+    // Test invalid characters (these should be caught as invalid)
+    PUNCTUATOR_TEST_CASE_FAIL("@");
+    PUNCTUATOR_TEST_CASE_FAIL("$");
+    PUNCTUATOR_TEST_CASE_FAIL("`");
+    PUNCTUATOR_TEST_CASE_FAIL("\\");
+
+    printf("\n=== Sequence Tests (Multiple Tokens) ===\n");
+
+    // Test that sequences are properly separated
+    // Note: These test the FIRST token only
+    printf("\nFirst token of sequences:\n");
+    PUNCTUATOR_TEST_CASE("()", MCC_PUNCTUATOR_LEFT_PARENTHESIS);
+    PUNCTUATOR_TEST_CASE("{}", MCC_PUNCTUATOR_LEFT_BRACE);
+    PUNCTUATOR_TEST_CASE("[]", MCC_PUNCTUATOR_LEFT_BRACKET);
+    PUNCTUATOR_TEST_CASE("+-", MCC_PUNCTUATOR_PLUS);
+    PUNCTUATOR_TEST_CASE("*/", MCC_PUNCTUATOR_ASTERISK);
+    PUNCTUATOR_TEST_CASE("<>", MCC_PUNCTUATOR_LEFT_CHEVRON);
+}
+
 int main() {
     test_keyword_lexing();
     test_integer_lexing();
     test_float_lexing();
+    test_punctuator_lexing();
     printf("\n=== All Tests Passed! ===\n");
     return 0;
 }
