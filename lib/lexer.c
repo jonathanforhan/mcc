@@ -2,6 +2,8 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -171,15 +173,7 @@ static struct mcc_token scan_keyword_or_identifier(struct mcc_lexer* lexer) {
     const struct mcc_string_view lexeme = mcc_string_view_from_ptrs(state.current, lexer->current);
     const enum mcc_keyword keyword      = keyword_lookup(lexeme.data, lexeme.size);
 
-    if (keyword != MCC_KEYWORD_NOT_FOUND) {
-        return (struct mcc_token){
-            .type   = MCC_TOKEN_TYPE_KEYWORD,
-            .value  = {.keyword = keyword},
-            .lexeme = lexeme,
-            .line   = state.line,
-            .column = state.column,
-        };
-    } else {
+    if (keyword == MCC_KEYWORD_NOT_FOUND) {
         return (struct mcc_token){
             .type   = MCC_TOKEN_TYPE_IDENTIFIER,
             .value  = {.identifier = lexeme},
@@ -188,58 +182,106 @@ static struct mcc_token scan_keyword_or_identifier(struct mcc_lexer* lexer) {
             .column = state.column,
         };
     }
+
+    return (struct mcc_token){
+        .type   = MCC_TOKEN_TYPE_KEYWORD,
+        .value  = {.keyword = keyword},
+        .lexeme = lexeme,
+        .line   = state.line,
+        .column = state.column,
+    };
 }
 
+static enum mcc_constant_type parse_suffix(struct mcc_string_view lexeme, bool is_float) {
+    if (is_float) {
+        return float_suffix_lookup(lexeme.data, lexeme.size);
+    } else {
+        return integer_suffix_lookup(lexeme.data, lexeme.size);
+    }
+}
+
+// see ISO C99 6.4.4.1 pg 56 for promotion chain.
+// the promotion chain differs for decimal vs hex and octal
 static struct mcc_constant parse_number(struct mcc_string_view lexeme, enum mcc_constant_type type, int radix) {
+    assert((radix == 8 || radix == 10 || radix == 16) && "valid radix");
+
     struct mcc_constant constant = {.type = type};
 
     char* lexeme_end = lexeme.data + lexeme.size;
 
-    char tmp    = *lexeme_end;
-    *lexeme_end = '\0'; // temporarily null-terminate the string for strto* family functions
+    const char tmp = *lexeme_end;
+    *lexeme_end    = '\0'; // temporarily null-terminate the string for strto* family functions
 
     char* number_end;
 
+l_retry:
+    errno = 0; // strto* will set errno on overflow
+
     switch (constant.type) {
         case MCC_CONSTANT_TYPE_INT:
-            constant.value.i = (int)strtol(lexeme.data, &number_end, radix);
+            // constant.value.i will have correct binary representation if constant.value.l <= INT_MAX
+            constant.value.l = strtol(lexeme.data, &number_end, radix);
+            if (errno == ERANGE || (constant.value.l > INT_MAX) || (constant.value.l < INT_MIN)) {
+                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_LONG_INT : MCC_CONSTANT_TYPE_UNSIGNED_INT;
+                goto l_retry;
+            }
             break;
         case MCC_CONSTANT_TYPE_LONG_INT:
             constant.value.l = strtol(lexeme.data, &number_end, radix);
+            if (errno == ERANGE) {
+                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_LONG_LONG_INT : MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT;
+                goto l_retry;
+            }
             break;
         case MCC_CONSTANT_TYPE_LONG_LONG_INT:
             constant.value.ll = strtoll(lexeme.data, &number_end, radix);
+            if (errno == ERANGE) {
+                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_OVERFLOW : MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT;
+            }
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_INT:
-            constant.value.u = (unsigned int)strtoul(lexeme.data, &number_end, radix);
+            // constant.value.u will have correct binary representation if constant.value.ul <= UINT_MAX
+            constant.value.ul = strtoul(lexeme.data, &number_end, radix);
+            if (errno == ERANGE || constant.value.ul > UINT_MAX) {
+                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT : MCC_CONSTANT_TYPE_LONG_INT;
+                goto l_retry;
+            }
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT:
             constant.value.ul = strtoul(lexeme.data, &number_end, radix);
+            if (errno == ERANGE) {
+                constant.type =
+                    radix == 10 ? MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT : MCC_CONSTANT_TYPE_LONG_LONG_INT;
+                goto l_retry;
+            }
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT:
             constant.value.ull = strtoull(lexeme.data, &number_end, radix);
+            if (errno == ERANGE) {
+                constant.type = MCC_CONSTANT_TYPE_OVERFLOW;
+            }
             break;
         case MCC_CONSTANT_TYPE_FLOAT:
             constant.value.f = strtof(lexeme.data, &number_end);
+            if (errno == ERANGE) {
+                constant.type = MCC_CONSTANT_TYPE_OVERFLOW;
+            }
             break;
         case MCC_CONSTANT_TYPE_DOUBLE:
             constant.value.d = strtod(lexeme.data, &number_end);
+            if (errno == ERANGE) {
+                constant.type = MCC_CONSTANT_TYPE_OVERFLOW;
+            }
             break;
         case MCC_CONSTANT_TYPE_LONG_DOUBLE:
             constant.value.ld = strtold(lexeme.data, &number_end);
+            if (errno == ERANGE) {
+                constant.type = MCC_CONSTANT_TYPE_OVERFLOW;
+            }
             break;
         default:
             assert(false);
     }
-
-#ifdef MCC_DEBUG
-    size_t suffix_size = (size_t)(lexeme_end - number_end);
-    if (suffix_size > 0) {
-        bool valid_integer_suffix = integer_suffix_lookup(number_end, suffix_size) == constant.type;
-        bool valid_float_suffix   = float_suffix_lookup(number_end, suffix_size) == constant.type;
-        assert(valid_integer_suffix ^ valid_float_suffix);
-    }
-#endif
 
     *lexeme_end = tmp; // restore original character
 
@@ -270,7 +312,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
         if (c == 'x' || c == 'X') {
             c = next(lexer);
             if (!isxdigit(c)) {
-                error_message = "Invalid character sequence in number";
+                error_message = "invalid character sequence in number";
             }
             radix  = 16;
             is_hex = true;
@@ -283,9 +325,9 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
     while (isalnum(c) || c == '.') {
         if (c == '.') {
             if (seen_decimal_point) {
-                error_message = "Multiple decimal points in number";
+                error_message = "multiple decimal points in number";
             } else if (seen_significand) {
-                error_message = "Decimal point in exponent";
+                error_message = "decimal point in exponent";
             }
 
             is_float           = true;
@@ -293,7 +335,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
             number_type        = MCC_CONSTANT_TYPE_DOUBLE;
         } else if ((!is_hex && (c == 'e' || c == 'E')) || (is_hex && (c == 'p' || c == 'P'))) {
             if (seen_significand) {
-                error_message = "Invalid character sequence in number";
+                error_message = "invalid character sequence in number";
             }
 
             is_float         = true;
@@ -305,20 +347,20 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
             }
 
             if (!isdigit(peek(lexer))) {
-                error_message = "Invalid character sequence in exponent";
+                error_message = "invalid character sequence in exponent";
             }
         } else if (((!is_hex || seen_significand) && !isdigit(c)) || (is_hex && !isxdigit(c))) {
-            const char* suffix_start = lexer->current;
+            char* suffix_begin = lexer->current;
             do {
                 c = next(lexer);
             } while (isalnum(c) || c == '.');
-            const char* suffix_end  = lexer->current;
-            const size_t suffix_len = (size_t)(suffix_end - suffix_start);
+            const char* suffix_end = lexer->current;
 
-            number_type = is_float ? float_suffix_lookup(suffix_start, suffix_len)
-                                   : integer_suffix_lookup(suffix_start, suffix_len);
+            const struct mcc_string_view suffix = mcc_string_view_from_ptrs(suffix_begin, suffix_end);
+
+            number_type = parse_suffix(suffix, is_float);
             if (number_type == MCC_CONSTANT_TYPE_INVALID) {
-                error_message = is_float ? "Invalid float literal suffix" : "Invalid integer literal suffix";
+                error_message = is_float ? "invalid float literal suffix" : "invalid integer literal suffix";
             }
             break; // finding a suffix ends the number (and we already are past the lexeme)
         } else if (maybe_octal && !isodigit(c)) {
@@ -329,31 +371,44 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
     }
 
     if (is_hex && seen_decimal_point && !seen_significand) {
-        error_message = "Hexadecimal floating point is not valid outside of binary exponentials";
+        error_message = "hexadecimal floating point is not valid outside of binary exponentials";
     } else if (maybe_octal && !is_float) {
         radix = 8;
         if (invalid_octal) {
-            error_message = "Octal integer literal contains non-octal digits";
+            error_message = "octal integer literal contains non-octal digits";
         }
     }
 
     const struct mcc_string_view lexeme = mcc_string_view_from_ptrs(state.current, lexer->current);
 
     if (error_message) {
-        return (struct mcc_token){
-            .type   = MCC_TOKEN_TYPE_INVALID,
-            .value  = {.error_message = error_message},
-            .lexeme = lexeme,
-            .line   = state.line,
-            .column = state.column,
-        };
+        goto l_abort;
     }
 
     const struct mcc_constant constant = parse_number(lexeme, number_type, radix);
 
+    if (constant.type < 0) {
+        switch (constant.type) {
+            case MCC_CONSTANT_TYPE_OVERFLOW:
+                error_message = "integer overflow/underflow";
+                goto l_abort;
+            default:
+                assert(false);
+        }
+    }
+
     return (struct mcc_token){
         .type   = MCC_TOKEN_TYPE_CONSTANT,
         .value  = {.constant = constant},
+        .lexeme = lexeme,
+        .line   = state.line,
+        .column = state.column,
+    };
+
+l_abort:
+    return (struct mcc_token){
+        .type   = MCC_TOKEN_TYPE_INVALID,
+        .value  = {.error_message = error_message},
         .lexeme = lexeme,
         .line   = state.line,
         .column = state.column,
@@ -380,8 +435,8 @@ static struct mcc_token scan_char(struct mcc_lexer* lexer) {
     if (c == '\\') {
         // escape sequence
         c = next(lexer);
-        if (escape_sequences[c] != 0) {
-            ret = escape_sequences[c];
+        if (escape_sequences[(unsigned char)c] != 0) {
+            ret = escape_sequences[(unsigned char)c];
             c   = next(lexer);
         } else if (isodigit(c)) {
             // octal escape sequence
@@ -392,7 +447,7 @@ static struct mcc_token scan_char(struct mcc_lexer* lexer) {
                 digits++;
             }
             if (digits > 6) {
-                error_message = "Octal escape sequence out of range";
+                error_message = "octal escape sequence out of range";
             }
         } else if (c == 'u' || c == 'U') {
             // universal escape sequence
@@ -404,7 +459,7 @@ static struct mcc_token scan_char(struct mcc_lexer* lexer) {
                 digits++;
             }
             if (digits != 4) {
-                error_message = "Invalid universal escape sequence";
+                error_message = "invalid universal escape sequence";
             }
         } else if (c == 'x' || c == 'X') {
             // hexadecimal escape sequence
@@ -416,11 +471,11 @@ static struct mcc_token scan_char(struct mcc_lexer* lexer) {
                 digits++;
             }
             if (digits == 0) {
-                error_message = "Invalid hexadecimal escape sequence";
+                error_message = "invalid hexadecimal escape sequence";
             }
         } else {
             // invalid escape sequence
-            error_message = "Invalid escape sequence";
+            error_message = "invalid escape sequence";
         }
     } else if (c >= 32 && c != 127) {
         // regular character
@@ -428,11 +483,11 @@ static struct mcc_token scan_char(struct mcc_lexer* lexer) {
         c   = next(lexer);
     } else {
         // control character
-        error_message = "Invalid character in character literal";
+        error_message = "invalid character in character literal";
     }
 
     if (c != '\'') {
-        error_message = "Unterminated character literal";
+        error_message = "unterminated character literal";
         do {
             c = next(lexer);
         } while (c != '\'' && c != '\0');
@@ -751,7 +806,7 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
         default:
             return (struct mcc_token){
                 .type   = MCC_TOKEN_TYPE_INVALID,
-                .value  = {.error_message = "Invalid character sequence"},
+                .value  = {.error_message = "invalid character sequence"},
                 .lexeme = mcc_string_view_from_ptrs(state.current, lexer->current),
                 .line   = state.line,
                 .column = state.column,
@@ -779,7 +834,8 @@ static struct mcc_token scan_eof(struct mcc_lexer* lexer) {
 void mcc_lexer_create(struct mcc_lexer* lexer, const char* source, size_t length) {
     assert(lexer && source);
     memset(lexer, 0, sizeof(*lexer));
-    if (!(lexer->source = (char*)malloc(length + 1))) {
+    lexer->source = malloc(length + 1);
+    if (!lexer->source) {
         perror("malloc");
         exit(EXIT_FAILURE);
     }

@@ -8,27 +8,33 @@ char* read_file(const char* path, size_t* bytes_read) {
     FILE* file   = NULL;
     char* buffer = NULL;
 
-    if (!(file = fopen(path, "rb"))) { // "rb" for binary mode
-
+    file = fopen(path, "rb");
+    if (!file) { // "rb" for binary mode
+        perror("fopen");
         goto l_abort;
     }
 
     fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    if (file_size <= 0) {
-        fprintf(stderr, "Error: File '%s' is empty or error occurred\n", path);
-        goto l_abort;
+    size_t file_size;
+    {
+        long ret = ftell(file);
+        if (ret < 0) {
+            perror("ftell");
+            goto l_abort;
+        }
+        file_size = (size_t)ret;
     }
     fseek(file, 0, SEEK_SET);
 
-    if (!(buffer = (char*)malloc(file_size + 1))) {
-        fprintf(stderr, "Error: Could not allocate memory for file '%s'\n", path);
+    buffer = malloc(file_size + 1);
+    if (!buffer) {
+        perror("malloc");
         goto l_abort;
     }
 
     size_t read_size = fread(buffer, 1, file_size, file);
-    if (read_size != (size_t)file_size) {
-        fprintf(stderr, "Error: Could not read file '%s' (read %zu of %ld bytes)\n", path, read_size, file_size);
+    if (read_size != file_size) {
+        perror("fread");
         goto l_abort;
     }
     buffer[file_size] = '\0';
@@ -39,7 +45,7 @@ char* read_file(const char* path, size_t* bytes_read) {
     return buffer;
 
 l_abort:
-    if (file != NULL) {
+    if (file) {
         fclose(file);
     }
     free(buffer);

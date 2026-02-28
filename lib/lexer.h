@@ -5,7 +5,6 @@
 #include "defs.h"
 
 enum mcc_keyword {
-    MCC_KEYWORD_NOT_FOUND = -1,
     MCC_KEYWORD_AUTO,      // "auto"
     MCC_KEYWORD_BREAK,     // "break"
     MCC_KEYWORD_CASE,      // "case"
@@ -43,10 +42,10 @@ enum mcc_keyword {
     MCC_KEYWORD_BOOL,      // "_Bool"
     MCC_KEYWORD_COMPLEX,   // "_Complex"
     MCC_KEYWORD_IMAGINARY, // "_Imaginary"
+    MCC_KEYWORD_NOT_FOUND = -1,
 };
 
 enum mcc_constant_type {
-    MCC_CONSTANT_TYPE_INVALID = -1,
     MCC_CONSTANT_TYPE_ENUM,
     MCC_CONSTANT_TYPE_CHAR,
     MCC_CONSTANT_TYPE_SIGNED_CHAR,
@@ -61,6 +60,8 @@ enum mcc_constant_type {
     MCC_CONSTANT_TYPE_FLOAT,
     MCC_CONSTANT_TYPE_DOUBLE,
     MCC_CONSTANT_TYPE_LONG_DOUBLE,
+    MCC_CONSTANT_TYPE_INVALID  = -1,
+    MCC_CONSTANT_TYPE_OVERFLOW = -2,
 };
 
 union mcc_constant_value {
@@ -151,13 +152,13 @@ enum mcc_punctuator {
 };
 
 enum mcc_token_type {
-    MCC_TOKEN_TYPE_INVALID = -1,
     MCC_TOKEN_TYPE_EOF,
     MCC_TOKEN_TYPE_KEYWORD,
     MCC_TOKEN_TYPE_IDENTIFIER,
     MCC_TOKEN_TYPE_CONSTANT,
     MCC_TOKEN_TYPE_STRING_LITERAL,
     MCC_TOKEN_TYPE_PUNCTUATOR,
+    MCC_TOKEN_TYPE_INVALID = -1,
 };
 
 union mcc_token_value {
