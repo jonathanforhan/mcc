@@ -424,8 +424,13 @@ static void test_integer_constants(void) {
     // Octal same rule
     expect_uint_constant("020000000000", 020000000000); // 2^31
 
+    // Hex value that overflows long long but fits in unsigned long long
+    // 0xFFFFFFFFFFFFFFFF == ULLONG_MAX, too big for long long but valid ull
+    expect_ulong_constant("0xFFFFFFFFFFFFFFFF", 0xFFFFFFFFFFFFFFFFul);
+
     TEST_SUITE("Integer Constants — Overflow");
 
+    expect_overflow("0xFFFFFFFFFFFFFFFFll");
     expect_overflow("99999999999999999999999999999");    // too big for any signed type
     expect_overflow("99999999999999999999999999999ull"); // too big for ull
     expect_overflow("99999999999999999999999999999u");   // too big for unsigned ladder

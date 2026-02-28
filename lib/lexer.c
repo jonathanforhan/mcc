@@ -201,9 +201,13 @@ static enum mcc_constant_type parse_suffix(struct mcc_string_view lexeme, bool i
 }
 
 // see ISO C99 6.4.4.1 pg 56 for promotion chain.
-// the promotion chain differs for decimal vs hex and octal
-static struct mcc_constant parse_number(struct mcc_string_view lexeme, enum mcc_constant_type type, int radix) {
+// the promotion chain differs for decimal vs hex and octal when unsuffixed
+static struct mcc_constant parse_number(struct mcc_string_view lexeme,
+                                        enum mcc_constant_type type,
+                                        int radix,
+                                        bool is_suffixed) {
     assert((radix == 8 || radix == 10 || radix == 16) && "valid radix");
+    bool strict_promotion_chain = radix == 10 || is_suffixed;
 
     struct mcc_constant constant = {.type = type};
 
@@ -222,36 +226,57 @@ l_retry:
             // constant.value.i will have correct binary representation if constant.value.l <= INT_MAX
             constant.value.l = strtol(lexeme.data, &number_end, radix);
             if (errno == ERANGE || (constant.value.l > INT_MAX) || (constant.value.l < INT_MIN)) {
-                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_LONG_INT : MCC_CONSTANT_TYPE_UNSIGNED_INT;
+                if (strict_promotion_chain) {
+                    constant.type = MCC_CONSTANT_TYPE_LONG_INT;
+                } else {
+                    constant.type = MCC_CONSTANT_TYPE_UNSIGNED_INT;
+                }
                 goto l_retry;
             }
             break;
         case MCC_CONSTANT_TYPE_LONG_INT:
             constant.value.l = strtol(lexeme.data, &number_end, radix);
             if (errno == ERANGE) {
-                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_LONG_LONG_INT : MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT;
+                if (strict_promotion_chain) {
+                    constant.type = MCC_CONSTANT_TYPE_LONG_LONG_INT;
+                } else {
+                    constant.type = MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT;
+                }
                 goto l_retry;
             }
             break;
         case MCC_CONSTANT_TYPE_LONG_LONG_INT:
             constant.value.ll = strtoll(lexeme.data, &number_end, radix);
             if (errno == ERANGE) {
-                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_OVERFLOW : MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT;
+                if (strict_promotion_chain) {
+                    constant.type = MCC_CONSTANT_TYPE_OVERFLOW;
+                    break; // exit on overflow
+                } else {
+                    constant.type = MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT;
+                }
+                goto l_retry;
             }
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_INT:
             // constant.value.u will have correct binary representation if constant.value.ul <= UINT_MAX
             constant.value.ul = strtoul(lexeme.data, &number_end, radix);
             if (errno == ERANGE || constant.value.ul > UINT_MAX) {
-                constant.type = radix == 10 ? MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT : MCC_CONSTANT_TYPE_LONG_INT;
+                if (strict_promotion_chain) {
+                    constant.type = MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT;
+                } else {
+                    constant.type = MCC_CONSTANT_TYPE_LONG_INT;
+                }
                 goto l_retry;
             }
             break;
         case MCC_CONSTANT_TYPE_UNSIGNED_LONG_INT:
             constant.value.ul = strtoul(lexeme.data, &number_end, radix);
             if (errno == ERANGE) {
-                constant.type =
-                    radix == 10 ? MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT : MCC_CONSTANT_TYPE_LONG_LONG_INT;
+                if (strict_promotion_chain) {
+                    constant.type = MCC_CONSTANT_TYPE_UNSIGNED_LONG_LONG_INT;
+                } else {
+                    constant.type = MCC_CONSTANT_TYPE_LONG_LONG_INT;
+                }
                 goto l_retry;
             }
             break;
@@ -300,6 +325,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
     bool is_hex        = false;
     bool maybe_octal   = false;
     bool invalid_octal = false;
+    bool is_suffixed   = false;
 
     int radix = 10;
 
@@ -358,6 +384,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
 
             const struct mcc_string_view suffix = mcc_string_view_from_ptrs(suffix_begin, suffix_end);
 
+            is_suffixed = true;
             number_type = parse_suffix(suffix, is_float);
             if (number_type == MCC_CONSTANT_TYPE_INVALID) {
                 error_message = is_float ? "invalid float literal suffix" : "invalid integer literal suffix";
@@ -385,7 +412,7 @@ static struct mcc_token scan_number(struct mcc_lexer* lexer) {
         goto l_abort;
     }
 
-    const struct mcc_constant constant = parse_number(lexeme, number_type, radix);
+    const struct mcc_constant constant = parse_number(lexeme, number_type, radix, is_suffixed);
 
     if (constant.type < 0) {
         switch (constant.type) {
