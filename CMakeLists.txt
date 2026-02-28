@@ -55,3 +55,9 @@ target_include_directories(mcc PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app/")
 
 #enable_testing()
 add_subdirectory(tests)
+
+execute_process(
+	COMMAND ${CMAKE_COMMAND} -E copy
+		"${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/compile_commands.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json"
+)

@@ -1,5 +1,6 @@
 #include "utils.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,7 +9,7 @@ char* read_file(const char* path, size_t* bytes_read) {
     char* buffer = NULL;
 
     if (!(file = fopen(path, "rb"))) { // "rb" for binary mode
-        fprintf(stderr, "Error: Could not open file '%s'\n", path);
+
         goto l_abort;
     }
 

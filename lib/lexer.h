@@ -46,6 +46,7 @@ enum mcc_keyword {
 };
 
 enum mcc_constant_type {
+    MCC_CONSTANT_TYPE_INVALID = -1,
     MCC_CONSTANT_TYPE_ENUM,
     MCC_CONSTANT_TYPE_CHAR,
     MCC_CONSTANT_TYPE_SIGNED_CHAR,
