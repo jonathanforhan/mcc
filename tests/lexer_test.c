@@ -8,6 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "context.h"
+
+static struct mcc_context* ctx;
 
 static int g_tests_run    = 0;
 static int g_tests_passed = 0;
@@ -56,7 +59,7 @@ static void print_results(void) {
 /// @brief Lex a single token from a null-terminated source string.
 static struct mcc_token lex_one(const char* src) {
     struct mcc_lexer lexer;
-    mcc_lexer_create(&lexer, src, strlen(src));
+    mcc_lexer_create(ctx, src, strlen(src), &lexer);
     struct mcc_token tok = mcc_lexer_next_token(&lexer);
     mcc_lexer_destroy(&lexer);
     return tok;
@@ -251,6 +254,86 @@ static void expect_ldouble_constant(const char* src, long double expected) {
 
 static void expect_overflow(const char* src) {
     expect_invalid(src);
+}
+
+static void expect_char_constant(const char* src, int expected) {
+    struct mcc_token tok = lex_one(src);
+    if (tok.type != MCC_TOKEN_TYPE_CONSTANT) {
+        TEST_FAIL("'%s': expected CONSTANT, got token type %d", src, tok.type);
+        return;
+    }
+    EXPECT(tok.value.constant.type == MCC_CONSTANT_TYPE_CHAR,
+           "'%s': expected MCC_CONSTANT_TYPE_CHAR, got %d",
+           src,
+           tok.value.constant.type);
+    EXPECT(tok.value.constant.value.i == expected,
+           "'%s': value %d != expected %d",
+           src,
+           tok.value.constant.value.i,
+           expected);
+}
+
+static void expect_wchar_constant(const char* src, wchar_t expected) {
+    struct mcc_token tok = lex_one(src);
+    if (tok.type != MCC_TOKEN_TYPE_CONSTANT) {
+        TEST_FAIL("'%s': expected CONSTANT, got token type %d", src, tok.type);
+        return;
+    }
+    EXPECT(tok.value.constant.type == MCC_CONSTANT_TYPE_WIDE_CHAR,
+           "'%s': expected MCC_CONSTANT_TYPE_WCHAR, got %d",
+           src,
+           tok.value.constant.type);
+    EXPECT(tok.value.constant.value.wc == expected,
+           "'%s': value %d != expected %d",
+           src,
+           (int)tok.value.constant.value.wc,
+           (int)expected);
+}
+
+static void expect_string_literal(const char* src, const char* expected, size_t expected_chars) {
+    struct mcc_lexer lexer;
+    mcc_lexer_create(ctx, src, strlen(src), &lexer);
+    struct mcc_token tok = mcc_lexer_next_token(&lexer);
+
+    if (tok.type != MCC_TOKEN_TYPE_CONSTANT) {
+        TEST_FAIL("'%s': expected CONSTANT, got token type %d", src, tok.type);
+        mcc_lexer_destroy(&lexer);
+        return;
+    }
+    EXPECT(tok.value.string_literal.type == MCC_STRING_LITERAL_TYPE_STRING,
+           "'%s': expected MCC_STRING_LITERAL_TYPE_STRING, got %d",
+           src,
+           tok.value.string_literal.type);
+
+    const struct mcc_string_view sv = tok.value.string_literal.value.string;
+
+    EXPECT(sv.size == expected_chars, "'%s': length %zu != expected %zu", src, sv.size, expected_chars);
+    EXPECT(memcmp(sv.data, expected, expected_chars) == 0, "'%s': content mismatch", src);
+
+    mcc_lexer_destroy(&lexer);
+}
+
+static void expect_wstring_literal(const char* src, const wchar_t* expected, size_t expected_chars) {
+    struct mcc_lexer lexer;
+    mcc_lexer_create(ctx, src, strlen(src), &lexer);
+    struct mcc_token tok = mcc_lexer_next_token(&lexer);
+
+    if (tok.type != MCC_TOKEN_TYPE_CONSTANT) {
+        TEST_FAIL("'%s': expected CONSTANT, got token type %d", src, tok.type);
+        mcc_lexer_destroy(&lexer);
+        return;
+    }
+    EXPECT(tok.value.string_literal.type == MCC_STRING_LITERAL_TYPE_WIDE_STRING,
+           "'%s': expected MCC_STRING_LITERAL_TYPE_WIDE_STRING, got %d",
+           src,
+           tok.value.string_literal.type);
+
+    const struct mcc_wstring_view wsv = tok.value.string_literal.value.wstring;
+
+    EXPECT(wsv.size == expected_chars, "'%s': length %zu != expected %zu", src, wsv.size, expected_chars);
+    EXPECT(memcmp(wsv.data, expected, expected_chars * sizeof(wchar_t)) == 0, "'%s': content mismatch", src);
+
+    mcc_lexer_destroy(&lexer);
 }
 
 // =============================================================================
@@ -527,6 +610,150 @@ static void test_float_constants(void) {
     expect_invalid("2.5ll");
 }
 
+static void test_character_constants(void) {
+    TEST_SUITE("Character Constants — Basic");
+
+    expect_char_constant("'a'", 'a');
+    expect_char_constant("'A'", 'A');
+    expect_char_constant("'0'", '0');
+    expect_char_constant("' '", ' ');
+
+    TEST_SUITE("Character Constants — Simple escape sequences");
+
+    expect_char_constant("'\\''", '\'');
+    expect_char_constant("'\\\"'", '\"');
+    expect_char_constant("'\\?'", '\?');
+    expect_char_constant("'\\\\'", '\\');
+    expect_char_constant("'\\a'", '\a');
+    expect_char_constant("'\\b'", '\b');
+    expect_char_constant("'\\f'", '\f');
+    expect_char_constant("'\\n'", '\n');
+    expect_char_constant("'\\r'", '\r');
+    expect_char_constant("'\\t'", '\t');
+    expect_char_constant("'\\v'", '\v');
+
+    TEST_SUITE("Character Constants — Octal escape sequences");
+
+    expect_char_constant("'\\0'", '\0');
+    expect_char_constant("'\\07'", '\07');
+    expect_char_constant("'\\101'", '\101'); // 'A'
+    expect_char_constant("'\\377'", '\377'); // max (255)
+
+    TEST_SUITE("Character Constants — Hexadecimal escape sequences");
+
+    expect_char_constant("'\\x41'", '\x41'); // 'A'
+    expect_char_constant("'\\x0'", '\x0');
+    expect_char_constant("'\\xFF'", '\xFF');
+
+    TEST_SUITE("Character Constants — Universal character names");
+
+    expect_char_constant("'\\u00A0'", L'\u00A0'); // first valid non-basic
+    expect_char_constant("'\\u0024'", L'\u0024'); // $ exception
+    expect_char_constant("'\\u0040'", L'\u0040'); // @ exception
+    expect_char_constant("'\\u0060'", L'\u0060'); // ` exception
+    expect_char_constant("'\\U000000A0'", L'\U000000A0');
+
+    TEST_SUITE("Character Constants — Wide");
+
+    expect_wchar_constant("L'a'", L'a');
+    expect_wchar_constant("L'\\n'", L'\n');
+    expect_wchar_constant("L'\\u00A0'", L'\u00A0');
+
+    TEST_SUITE("Character Constants — Invalid");
+
+    expect_invalid("''");          // empty
+    expect_invalid("'\\q'");       // bad escape
+    expect_invalid("'\\x'");       // \x with no digits
+    expect_invalid("'\\9'");       // 9 is not an octal digit
+    expect_invalid("'\\u004'");    // \u needs exactly 4 digits
+    expect_invalid("'\\uD800'");   // surrogate
+    expect_invalid("'\\uDFFF'");   // surrogate
+    expect_invalid("'\\u009F'");   // below 0x00A0, not an allowed exception
+    expect_invalid("'\\U000000'"); // \U needs exactly 8 digits
+}
+
+static void test_string_literals(void) {
+    TEST_SUITE("String Literals — Basic");
+
+    expect_string_literal("\"\"", "", 1); // just null terminator
+    expect_string_literal("\"a\"", "a", 2);
+    expect_string_literal("\"hello\"", "hello", 6);
+    expect_string_literal("\"hello world\"", "hello world", 12);
+
+    TEST_SUITE("String Literals — Simple escape sequences");
+
+    expect_string_literal("\"\\n\"", "\n", 2);
+    expect_string_literal("\"\\t\"", "\t", 2);
+    expect_string_literal("\"\\r\"", "\r", 2);
+    expect_string_literal("\"\\\\\"", "\\", 2);
+    expect_string_literal("\"\\\"\"", "\"", 2);
+    expect_string_literal("\"\\a\"", "\a", 2);
+    expect_string_literal("\"\\b\"", "\b", 2);
+    expect_string_literal("\"\\f\"", "\f", 2);
+    expect_string_literal("\"\\v\"", "\v", 2);
+    expect_string_literal("\"\\?\"", "\?", 2);
+    expect_string_literal("\"\\0\"", "\0", 2); // embedded null
+    expect_string_literal("\"a\\nb\"", "a\nb", 4);
+
+    TEST_SUITE("String Literals — Octal escape sequences");
+
+    expect_string_literal("\"\\101\"", "A", 2);       // \101 = 'A'
+    expect_string_literal("\"\\07\"", "\07", 2);      // 2-digit octal
+    expect_string_literal("\"\\0\\0\"", "\0\0", 3);   // two embedded nulls
+    expect_string_literal("\"\\101\\102\"", "AB", 3); // \101='A', \102='B'
+    expect_string_literal("\"\\101bc\"", "Abc", 4);   // octal then regular chars
+
+    TEST_SUITE("String Literals — Hex escape sequences");
+
+    expect_string_literal("\"\\x41\"", "A", 2); // \x41 = 'A'
+    expect_string_literal("\"\\x41\\x42\"", "AB", 3);
+    expect_string_literal("\"\\x0\"", "\0", 2); // hex null
+
+    // correct version: hex stops only at non-hex char
+    expect_string_literal("\"\\x61zz\"", "azz", 4); // 'z' is not hex, stops correctly
+    expect_string_literal("\"\\xFF\"", "\xFF", 2);
+
+    TEST_SUITE("String Literals — UCN in narrow strings (ASCII-range exceptions only)");
+
+    // These three codepoints are explicitly allowed below 0x00A0
+    // and map to well-known ASCII values, so the result is portable
+    expect_string_literal("\"\\u0024\"", "$", 2); // U+0024 = '$'
+    expect_string_literal("\"\\u0040\"", "@", 2); // U+0040 = '@'
+    expect_string_literal("\"\\u0060\"", "`", 2); // U+0060 = '`'
+
+    TEST_SUITE("String Literals — UCN in wide strings");
+
+    // Wide string UCNs store the codepoint directly in wchar_t
+    expect_wstring_literal("L\"\\u00A0\"", (wchar_t[]){0x00A0, 0}, 2);             // NO-BREAK SPACE
+    expect_wstring_literal("L\"\\u0024\"", (wchar_t[]){0x0024, 0}, 2);             // $
+    expect_wstring_literal("L\"\\u0040\"", (wchar_t[]){0x0040, 0}, 2);             // @
+    expect_wstring_literal("L\"\\u0060\"", (wchar_t[]){0x0060, 0}, 2);             // `
+    expect_wstring_literal("L\"\\U000000A0\"", (wchar_t[]){0x00A0, 0}, 2);         // \U form
+    expect_wstring_literal("L\"a\\u00A0b\"", (wchar_t[]){'a', 0x00A0, 'b', 0}, 4); // mixed
+
+    TEST_SUITE("String Literals — Wide basic");
+
+    expect_wstring_literal("L\"\"", (wchar_t[]){0}, 1);
+    expect_wstring_literal("L\"a\"", (wchar_t[]){'a', 0}, 2);
+    expect_wstring_literal("L\"hi\"", (wchar_t[]){'h', 'i', 0}, 3);
+    expect_wstring_literal("L\"\\n\"", (wchar_t[]){'\n', 0}, 2);
+    expect_wstring_literal("L\"\\101\"", (wchar_t[]){'A', 0}, 2);
+
+    TEST_SUITE("String Literals — Invalid");
+
+    expect_invalid("\"\\x61bc\"");   // note: \x61 = 'a', then 'b','c' as plain chars
+                                     // BUT: \x61b is greedy — 'b' is a hex digit!
+                                     // so this is actually \x61b which overflows UCHAR_MAX -> INVALID
+    expect_invalid("\"\\q\"");       // bad escape
+    expect_invalid("\"\\x\"");       // \x with no digits
+    expect_invalid("\"");            // unterminated
+    expect_invalid("\"hello");       // unterminated
+    expect_invalid("\"\\u004\"");    // \u needs exactly 4 digits
+    expect_invalid("\"\\uD800\"");   // surrogate
+    expect_invalid("\"\\u009F\"");   // below 0x00A0, not an allowed exception
+    expect_invalid("\"\\U000000\""); // \U needs exactly 8 digits
+}
+
 static void test_punctuators(void) {
     TEST_SUITE("Punctuators — Single character");
 
@@ -635,13 +862,17 @@ static void test_punctuators(void) {
 // =============================================================================
 
 int main(void) {
+    ctx = mcc_context_create();
+
     test_keywords();
     test_identifiers();
     test_integer_constants();
     test_float_constants();
-    // test_character_constants();
-    // test_string_literals();
+    test_character_constants();
+    test_string_literals();
     test_punctuators();
+
+    mcc_context_destroy(ctx);
 
     print_results();
     return g_tests_failed > 0 ? EXIT_FAILURE : EXIT_SUCCESS;

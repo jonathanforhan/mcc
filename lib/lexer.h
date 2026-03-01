@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "context.h"
 #include "defs.h"
 
 enum mcc_keyword {
@@ -180,6 +181,7 @@ struct mcc_token {
 };
 
 struct mcc_lexer {
+    struct mcc_context* ctx;
     char* source;
     char* current;
     size_t line;
@@ -187,10 +189,11 @@ struct mcc_lexer {
 };
 
 /// @brief Initializes a lexer with the given source text and its length.
-/// @param lexer Pointer to the lexer structure to initialize.
+/// @param ctx MCC context
 /// @param source Pointer to the source text to be lexed.
 /// @param length Length of the source text in bytes (excluding NULL terminator).
-void mcc_lexer_create(struct mcc_lexer* lexer, const char* source, size_t length);
+/// @param lexer Pointer to the lexer structure to initialize.
+void mcc_lexer_create(struct mcc_context* ctx, const char* source, size_t length, struct mcc_lexer* lexer);
 
 /// @brief Destroys a lexer object and releases any resources associated with it.
 /// @param lexer Pointer to the lexer object to be destroyed.

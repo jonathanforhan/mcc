@@ -11,6 +11,7 @@
 #include <string.h>
 #include <wchar.h>
 #include "./private/utils.h"
+#include "context.h"
 #include "defs.h"
 
 #ifdef _MSC_VER
@@ -95,64 +96,6 @@ static const char escape_sequences[256] = {
     ['v']  = '\v',
 };
 
-static const struct table_entry punctuator_table[] = {
-    {"%:%:", MCC_PUNCTUATOR_HASH_HASH                 },
-    {"...",  MCC_PUNCTUATOR_ELLIPSIS                  },
-    {"<<=",  MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON_EQUAL },
-    {">>=",  MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON_EQUAL},
-    {"->",   MCC_PUNCTUATOR_ARROW                     },
-    {"++",   MCC_PUNCTUATOR_PLUS_PLUS                 },
-    {"--",   MCC_PUNCTUATOR_MINUS_MINUS               },
-    {"<<",   MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON       },
-    {">>",   MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON      },
-    {"<=",   MCC_PUNCTUATOR_LEFT_CHEVRON_EQUAL        },
-    {">=",   MCC_PUNCTUATOR_RIGHT_CHEVRON_EQUAL       },
-    {"==",   MCC_PUNCTUATOR_EQUAL_EQUAL               },
-    {"!=",   MCC_PUNCTUATOR_BANG_EQUAL                },
-    {"&&",   MCC_PUNCTUATOR_AMPERSAND_AMPERSAND       },
-    {"||",   MCC_PUNCTUATOR_PIPE_PIPE                 },
-    {"*=",   MCC_PUNCTUATOR_ASTERISK_EQUAL            },
-    {"/=",   MCC_PUNCTUATOR_SLASH_EQUAL               },
-    {"%=",   MCC_PUNCTUATOR_PERCENT_EQUAL             },
-    {"+=",   MCC_PUNCTUATOR_PLUS_EQUAL                },
-    {"-=",   MCC_PUNCTUATOR_MINUS_EQUAL               },
-    {"&=",   MCC_PUNCTUATOR_AMPERSAND_EQUAL           },
-    {"^=",   MCC_PUNCTUATOR_CARET_EQUAL               },
-    {"|=",   MCC_PUNCTUATOR_PIPE_EQUAL                },
-    {"##",   MCC_PUNCTUATOR_HASH_HASH                 },
-    {"<:",   MCC_PUNCTUATOR_LEFT_BRACKET              },
-    {":>",   MCC_PUNCTUATOR_RIGHT_BRACKET             },
-    {"<%",   MCC_PUNCTUATOR_LEFT_BRACE                },
-    {"%>",   MCC_PUNCTUATOR_RIGHT_BRACE               },
-    {"%:",   MCC_PUNCTUATOR_HASH                      },
-    {"[",    MCC_PUNCTUATOR_LEFT_BRACKET              },
-    {"]",    MCC_PUNCTUATOR_RIGHT_BRACKET             },
-    {"(",    MCC_PUNCTUATOR_LEFT_PARENTHESIS          },
-    {")",    MCC_PUNCTUATOR_RIGHT_PARENTHESIS         },
-    {"{",    MCC_PUNCTUATOR_LEFT_BRACE                },
-    {"}",    MCC_PUNCTUATOR_RIGHT_BRACE               },
-    {".",    MCC_PUNCTUATOR_DOT                       },
-    {"&",    MCC_PUNCTUATOR_AMPERSAND                 },
-    {"*",    MCC_PUNCTUATOR_ASTERISK                  },
-    {"+",    MCC_PUNCTUATOR_PLUS                      },
-    {"-",    MCC_PUNCTUATOR_MINUS                     },
-    {"~",    MCC_PUNCTUATOR_TILDE                     },
-    {"!",    MCC_PUNCTUATOR_BANG                      },
-    {"/",    MCC_PUNCTUATOR_SLASH                     },
-    {"%",    MCC_PUNCTUATOR_PERCENT                   },
-    {"<",    MCC_PUNCTUATOR_LEFT_CHEVRON              },
-    {">",    MCC_PUNCTUATOR_RIGHT_CHEVRON             },
-    {"^",    MCC_PUNCTUATOR_CARET                     },
-    {"|",    MCC_PUNCTUATOR_PIPE                      },
-    {"?",    MCC_PUNCTUATOR_QUESTION_MARK             },
-    {":",    MCC_PUNCTUATOR_COLON                     },
-    {";",    MCC_PUNCTUATOR_SEMICOLON                 },
-    {"=",    MCC_PUNCTUATOR_EQUAL                     },
-    {",",    MCC_PUNCTUATOR_COMMA                     },
-    {"#",    MCC_PUNCTUATOR_HASH                      },
-    {NULL,   MCC_PUNCTUATOR_INVALID                   },
-};
-
 static int table_lookup(const struct table_entry* table, const char* str, size_t len) {
     for (; table->key != NULL; table++) {
         if ((strncmp(table->key, str, len) == 0) && (strlen(table->key) == len)) {
@@ -199,10 +142,6 @@ static char next(struct mcc_lexer* lexer) {
 
 static char peek(struct mcc_lexer* lexer) {
     return lexer->current[1];
-}
-
-static char peek_n(struct mcc_lexer* lexer, size_t n) {
-    return lexer->current[n];
 }
 
 static void skip_whitespace(struct mcc_lexer* lexer) {
@@ -263,6 +202,7 @@ static struct mcc_constant parse_number(struct mcc_string_view lexeme,
 
     char* lexeme_end = lexeme.data + lexeme.size;
 
+    // only works if lexeme is writable (it's owned by lexer so yes)
     const char tmp = *lexeme_end;
     *lexeme_end    = '\0'; // temporarily null-terminate the string for strto* family functions
 
@@ -492,109 +432,143 @@ l_abort:
     };
 }
 
+// called without "'" or "L'" so it can be used by both scan_char and scan_string
+// len outputs the characters consumed, used for string literals, can be NULL
+static struct mcc_constant parse_char(struct mcc_string_view lexeme, bool is_wide, size_t* len) {
+    const char* p = lexeme.data;
+
+    int i; // character constant int value
+
+    if (*p == '\\') {
+        p++; // skip backslash
+        char esc = *p++;
+
+        if (esc == 'u' || esc == 'U') {
+            // Universal character name: \uXXXX or \UXXXXXXXX
+            int required           = (esc == 'u') ? 4 : 8;
+            int consumed           = 0;
+            unsigned long long val = 0;
+            while (consumed < required && isxdigit((unsigned char)*p)) {
+                val = (val * 16) + (isdigit((unsigned char)*p) ? (*p - '0') : (tolower((unsigned char)*p) - 'a' + 10));
+                p++;
+                consumed++;
+            }
+            if (consumed != required) {
+                // not enough hex digits
+                return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+            }
+            // constraint: must not be below 0x00A0 (except $=0x0024, @=0x0040, `=0x0060)
+            // and must not be in surrogate range D800-DFFF
+            if (val < 0x00A0 && val != 0x0024 && val != 0x0040 && val != 0x0060) {
+                return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+            }
+            if (val >= 0xD800 && val <= 0xDFFF) {
+                return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+            }
+            i = (int)val;
+        } else if (isodigit((unsigned char)esc)) {
+            // Octal escape: 1-3 octal digits, first digit already in esc
+            int consumed = 1;
+            unsigned val = (unsigned)esc - '0';
+            while (consumed < 3 && isodigit((unsigned char)*p)) {
+                val = val * 8 + (*p - '0');
+                p++;
+                consumed++;
+
+                if (val > UCHAR_MAX) {
+                    return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+                }
+            }
+            i = (int)(char)val;
+        } else if (esc == 'x') {
+            // Hex escape: one or more hex digits (greedy)
+            if (!isxdigit((unsigned char)*p)) {
+                // \x with no digits
+                return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+            }
+            unsigned val = 0;
+            while (isxdigit((unsigned char)*p)) {
+                val = val * 16 + (isdigit((unsigned char)*p) ? (*p - '0') : (tolower((unsigned char)*p) - 'a' + 10));
+                p++;
+
+                if (val > UCHAR_MAX) {
+                    return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+                }
+            }
+            i = (int)(char)val;
+        } else {
+            // Simple escape sequence
+            const char mapped = escape_sequences[(unsigned char)esc];
+            if (mapped == 0) {
+                return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+            }
+            i = (int)(unsigned char)mapped;
+        }
+    } else if (*p == '\n' || *p == '\0') {
+        // literal newline or NUL not allowed in character constant
+        return (struct mcc_constant){.type = MCC_CONSTANT_TYPE_INVALID};
+    } else {
+        i = (int)(unsigned char)*p++;
+    }
+
+    if (len) {
+        *len = (size_t)(p - lexeme.data);
+    }
+
+    if (is_wide) {
+        return (struct mcc_constant){
+            .type     = MCC_CONSTANT_TYPE_WIDE_CHAR,
+            .value.wc = (wchar_t)i,
+        };
+    }
+
+    return (struct mcc_constant){
+        .type    = MCC_CONSTANT_TYPE_CHAR,
+        .value.i = i,
+    };
+}
+
 static struct mcc_token scan_char(struct mcc_lexer* lexer) {
     const struct mcc_lexer state = *lexer;
 
     const char* error_message = NULL; // setting this to non-NULL indicates an error / invalid token
 
     bool is_wide = false;
-    int ret      = 0;
 
-    char c = curr(lexer);
-
-    if (c == 'L') {
-        c       = next(lexer);
+    if (curr(lexer) == 'L') {
+        next(lexer);
         is_wide = true;
     }
-    assert(c == '\'' && "must start with single quote");
-    c = next(lexer);
+    assert(curr(lexer) == '\'' && "scan_char must be called on \"'\" or \"L'\" prefix");
+    next(lexer); // skip "'"
 
-    if (c == '\\') {
-        // escape sequence
-        c = next(lexer);
-        if (escape_sequences[(unsigned char)c] != 0) {
-            ret = escape_sequences[(unsigned char)c];
-            c   = next(lexer);
-        } else if (isodigit(c)) {
-            // octal escape sequence
-            int digits = 0;
-            while (isodigit(c)) {
-                ret = (ret << 3) | (c - '0');
-                c   = next(lexer);
-                digits++;
-            }
-            if (digits > 6) {
-                error_message = "octal escape sequence out of range";
-            }
-        } else if (c == 'u' || c == 'U') {
-            // universal escape sequence
-            c          = next(lexer);
-            int digits = 0;
-            while (isxdigit(c)) {
-                ret = (ret << 4) | (isdigit(c) ? (c - '0') : (toupper(c) - 'A' + 10));
-                c   = next(lexer);
-                digits++;
-            }
-            if (digits != 4) {
-                error_message = "invalid universal escape sequence";
-            }
-        } else if (c == 'x' || c == 'X') {
-            // hexadecimal escape sequence
-            c          = next(lexer);
-            int digits = 0;
-            while (isxdigit(c)) {
-                ret = (ret << 4) | (isdigit(c) ? (c - '0') : (toupper(c) - 'A' + 10));
-                c   = next(lexer);
-                digits++;
-            }
-            if (digits == 0) {
-                error_message = "invalid hexadecimal escape sequence";
-            }
-        } else {
-            // invalid escape sequence
-            error_message = "invalid escape sequence";
-        }
-    } else if (c >= 32 && c != 127) {
-        // regular character
-        ret = c;
-        c   = next(lexer);
-    } else {
-        // control character
-        error_message = "invalid character in character literal";
+    char* char_begin = lexer->current;
+    while (curr(lexer) != '\'' && curr(lexer) != '\0') {
+        next(lexer);
     }
+    char* char_end = lexer->current;
 
-    if (c != '\'') {
-        error_message = "unterminated character literal";
-        do {
-            c = next(lexer);
-        } while (c != '\'' && c != '\0');
-    } else {
-        c = next(lexer);
+    const struct mcc_string_view character = mcc_string_view_from_ptrs(char_begin, char_end);
+    const struct mcc_constant constant     = parse_char(character, is_wide, NULL);
+    /* don't check the len because multi-char constants are implementation defined and mcc uses first char */
+
+    if (curr(lexer) == '\0') {
+        error_message = "unterminated character constant";
+    } else if (character.size == 0) {
+        error_message = "empty character constant";
     }
+    assert(error_message || curr(lexer) == '\'');
 
+    next(lexer); // lexeme end pointer
     const struct mcc_string_view lexeme = mcc_string_view_from_ptrs(state.current, lexer->current);
 
     if (error_message) {
-        return (struct mcc_token){
-            .type   = MCC_TOKEN_TYPE_INVALID,
-            .value  = {.error_message = error_message},
-            .lexeme = lexeme,
-            .line   = state.line,
-            .column = state.column,
-        };
+        goto l_abort;
     }
 
-    struct mcc_constant constant;
-    if (is_wide) {
-        constant = (struct mcc_constant){
-            .type  = MCC_CONSTANT_TYPE_WIDE_CHAR,
-            .value = {.wc = (wchar_t)ret},
-        };
-    } else {
-        constant = (struct mcc_constant){
-            .type  = MCC_CONSTANT_TYPE_CHAR,
-            .value = {.c = (char)ret},
-        };
+    if (constant.type == MCC_CONSTANT_TYPE_INVALID) {
+        error_message = "invalid character constant";
+        goto l_abort;
     }
 
     return (struct mcc_token){
@@ -604,17 +578,102 @@ static struct mcc_token scan_char(struct mcc_lexer* lexer) {
         .line   = state.line,
         .column = state.column,
     };
+
+l_abort:
+    return (struct mcc_token){
+        .type   = MCC_TOKEN_TYPE_INVALID,
+        .value  = {.error_message = error_message},
+        .lexeme = lexeme,
+        .line   = state.line,
+        .column = state.column,
+    };
 }
 
 static struct mcc_token scan_string(struct mcc_lexer* lexer) {
     const struct mcc_lexer state = *lexer;
 
-    next(lexer); // TODO
+    const char* error_message = NULL; // setting this to non-NULL indicates an error / invalid token
+
+    bool is_wide = false;
+
+    if (curr(lexer) == 'L') {
+        next(lexer);
+        is_wide = true;
+    }
+    assert(curr(lexer) == '"' && "scan_char must be called on '\"' or 'L\"' prefix");
+    next(lexer); // skip '"'
+
+    char* str_begin = lexer->current;
+    while (curr(lexer) != '"' && curr(lexer) != '\0') {
+        next(lexer);
+    }
+    char* str_end = lexer->current;
+
+    const struct mcc_string_view view = mcc_string_view_from_ptrs(str_begin, str_end);
+
+    void* string = malloc((is_wide ? sizeof(wchar_t) : sizeof(char)) * (view.size + 1)); // over alloc is ok
+    if (!string) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    size_t chars = 0; // string literal char count
+    for (size_t len, total = 0; total < view.size; chars++) {
+        const struct mcc_string_view slice = mcc_string_view_from_ptrs(view.data + total, view.data + view.size);
+        const struct mcc_constant constant = parse_char(slice, is_wide, &len);
+
+        if (constant.type < 0) {
+            error_message = "invalid character in string literal";
+            break;
+        } else if (is_wide) {
+            assert(constant.type == MCC_CONSTANT_TYPE_WIDE_CHAR);
+            ((wchar_t*)string)[chars] = constant.value.wc;
+        } else {
+            assert(constant.type == MCC_CONSTANT_TYPE_CHAR);
+            ((char*)string)[chars] = (char)constant.value.i;
+        }
+        total += len;
+    }
+
+    if (is_wide) {
+        ((wchar_t*)string)[chars++] = 0;
+    } else {
+        ((char*)string)[chars++] = 0;
+    }
+
+    mcc_context_store_string(lexer->ctx, string);
+
+    if (curr(lexer) == '\0') {
+        error_message = "unterminated character constant";
+    } else {
+        assert(error_message || curr(lexer) == '"');
+        next(lexer); // lexeme end pointer
+    }
+
+    const struct mcc_string_view lexeme = mcc_string_view_from_ptrs(state.current, lexer->current);
+
+    if (error_message) {
+        goto l_abort;
+    }
+
+    const struct mcc_string_literal string_literal = {
+        .type  = is_wide ? MCC_STRING_LITERAL_TYPE_WIDE_STRING : MCC_STRING_LITERAL_TYPE_STRING,
+        .value = {{string, chars}},
+    };
 
     return (struct mcc_token){
+        .type   = MCC_TOKEN_TYPE_CONSTANT,
+        .value  = {.string_literal = string_literal},
+        .lexeme = lexeme,
+        .line   = state.line,
+        .column = state.column,
+    };
+
+l_abort:
+    return (struct mcc_token){
         .type   = MCC_TOKEN_TYPE_INVALID,
-        .value  = {.error_message = "TODO"},
-        .lexeme = mcc_string_view_from_ptrs(state.current, lexer->current),
+        .value  = {.error_message = error_message},
+        .lexeme = lexeme,
         .line   = state.line,
         .column = state.column,
     };
@@ -940,9 +999,10 @@ static struct mcc_token scan_eof(struct mcc_lexer* lexer) {
     };
 }
 
-void mcc_lexer_create(struct mcc_lexer* lexer, const char* source, size_t length) {
-    assert(lexer && source);
+void mcc_lexer_create(struct mcc_context* ctx, const char* source, size_t length, struct mcc_lexer* lexer) {
+    assert(ctx && lexer && source);
     memset(lexer, 0, sizeof(*lexer));
+
     lexer->source = malloc(length + 1);
     if (!lexer->source) {
         perror("malloc");
@@ -951,11 +1011,13 @@ void mcc_lexer_create(struct mcc_lexer* lexer, const char* source, size_t length
     memcpy(lexer->source, source, length);
     lexer->source[length] = '\0';
     lexer->current        = lexer->source;
+
+    lexer->ctx = ctx;
+    mcc_context_store_string(ctx, lexer->source); // context owns source
 }
 
 void mcc_lexer_destroy(struct mcc_lexer* lexer) {
     assert(lexer);
-    free(lexer->source);
     memset(lexer, 0, sizeof(*lexer));
 }
 
@@ -983,10 +1045,6 @@ struct mcc_token mcc_lexer_next_token(struct mcc_lexer* lexer) {
         return scan_eof(lexer);
     }
 
-    if (isident_start(c)) {
-        return scan_keyword_or_identifier(lexer);
-    }
-
     if (isdigit(c) || (c == '.' && isdigit(peek(lexer)))) {
         return scan_number(lexer);
     }
@@ -997,6 +1055,10 @@ struct mcc_token mcc_lexer_next_token(struct mcc_lexer* lexer) {
 
     if (c == '\"' || (c == 'L' && peek(lexer) == '\"')) {
         return scan_string(lexer);
+    }
+
+    if (isident_start(c)) {
+        return scan_keyword_or_identifier(lexer);
     }
 
     return scan_punctuator(lexer);
