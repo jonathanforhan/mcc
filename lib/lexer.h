@@ -149,6 +149,7 @@ enum mcc_punctuator {
     MCC_PUNCTUATOR_COMMA,                      // ,
     MCC_PUNCTUATOR_HASH,                       // #
     MCC_PUNCTUATOR_HASH_HASH,                  // ##
+    MCC_PUNCTUATOR_INVALID = -1,
 };
 
 enum mcc_token_type {

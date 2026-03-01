@@ -23,24 +23,6 @@ struct table_entry {
     int value;
 };
 
-static int table_lookup(const struct table_entry* table, const char* str, size_t len) {
-    for (; table->key != NULL; table++) {
-        if ((strncmp(table->key, str, len) == 0) && (strlen(table->key) == len)) {
-            break;
-        }
-    }
-    return table->value;
-}
-
-static int table_caseless_lookup(const struct table_entry* table, const char* str, size_t len) {
-    for (; table->key != NULL; table++) {
-        if ((strncasecmp(table->key, str, len) == 0) && (strlen(table->key) == len)) {
-            break;
-        }
-    }
-    return table->value;
-}
-
 static const struct table_entry keyword_table[] = {
     {"auto",       MCC_KEYWORD_AUTO     },
     {"break",      MCC_KEYWORD_BREAK    },
@@ -99,18 +81,6 @@ static const struct table_entry float_suffix_table[] = {
     {NULL, MCC_CONSTANT_TYPE_INVALID    },
 };
 
-static enum mcc_keyword keyword_lookup(const char* str, size_t len) {
-    return table_lookup(keyword_table, str, len);
-}
-
-static enum mcc_constant_type integer_suffix_lookup(const char* str, size_t len) {
-    return table_caseless_lookup(integer_suffix_table, str, len);
-}
-
-static enum mcc_constant_type float_suffix_lookup(const char* str, size_t len) {
-    return table_caseless_lookup(float_suffix_table, str, len);
-}
-
 static const char escape_sequences[256] = {
     ['\''] = '\'',
     ['\"'] = '\"',
@@ -125,6 +95,94 @@ static const char escape_sequences[256] = {
     ['v']  = '\v',
 };
 
+static const struct table_entry punctuator_table[] = {
+    {"%:%:", MCC_PUNCTUATOR_HASH_HASH                 },
+    {"...",  MCC_PUNCTUATOR_ELLIPSIS                  },
+    {"<<=",  MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON_EQUAL },
+    {">>=",  MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON_EQUAL},
+    {"->",   MCC_PUNCTUATOR_ARROW                     },
+    {"++",   MCC_PUNCTUATOR_PLUS_PLUS                 },
+    {"--",   MCC_PUNCTUATOR_MINUS_MINUS               },
+    {"<<",   MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON       },
+    {">>",   MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON      },
+    {"<=",   MCC_PUNCTUATOR_LEFT_CHEVRON_EQUAL        },
+    {">=",   MCC_PUNCTUATOR_RIGHT_CHEVRON_EQUAL       },
+    {"==",   MCC_PUNCTUATOR_EQUAL_EQUAL               },
+    {"!=",   MCC_PUNCTUATOR_BANG_EQUAL                },
+    {"&&",   MCC_PUNCTUATOR_AMPERSAND_AMPERSAND       },
+    {"||",   MCC_PUNCTUATOR_PIPE_PIPE                 },
+    {"*=",   MCC_PUNCTUATOR_ASTERISK_EQUAL            },
+    {"/=",   MCC_PUNCTUATOR_SLASH_EQUAL               },
+    {"%=",   MCC_PUNCTUATOR_PERCENT_EQUAL             },
+    {"+=",   MCC_PUNCTUATOR_PLUS_EQUAL                },
+    {"-=",   MCC_PUNCTUATOR_MINUS_EQUAL               },
+    {"&=",   MCC_PUNCTUATOR_AMPERSAND_EQUAL           },
+    {"^=",   MCC_PUNCTUATOR_CARET_EQUAL               },
+    {"|=",   MCC_PUNCTUATOR_PIPE_EQUAL                },
+    {"##",   MCC_PUNCTUATOR_HASH_HASH                 },
+    {"<:",   MCC_PUNCTUATOR_LEFT_BRACKET              },
+    {":>",   MCC_PUNCTUATOR_RIGHT_BRACKET             },
+    {"<%",   MCC_PUNCTUATOR_LEFT_BRACE                },
+    {"%>",   MCC_PUNCTUATOR_RIGHT_BRACE               },
+    {"%:",   MCC_PUNCTUATOR_HASH                      },
+    {"[",    MCC_PUNCTUATOR_LEFT_BRACKET              },
+    {"]",    MCC_PUNCTUATOR_RIGHT_BRACKET             },
+    {"(",    MCC_PUNCTUATOR_LEFT_PARENTHESIS          },
+    {")",    MCC_PUNCTUATOR_RIGHT_PARENTHESIS         },
+    {"{",    MCC_PUNCTUATOR_LEFT_BRACE                },
+    {"}",    MCC_PUNCTUATOR_RIGHT_BRACE               },
+    {".",    MCC_PUNCTUATOR_DOT                       },
+    {"&",    MCC_PUNCTUATOR_AMPERSAND                 },
+    {"*",    MCC_PUNCTUATOR_ASTERISK                  },
+    {"+",    MCC_PUNCTUATOR_PLUS                      },
+    {"-",    MCC_PUNCTUATOR_MINUS                     },
+    {"~",    MCC_PUNCTUATOR_TILDE                     },
+    {"!",    MCC_PUNCTUATOR_BANG                      },
+    {"/",    MCC_PUNCTUATOR_SLASH                     },
+    {"%",    MCC_PUNCTUATOR_PERCENT                   },
+    {"<",    MCC_PUNCTUATOR_LEFT_CHEVRON              },
+    {">",    MCC_PUNCTUATOR_RIGHT_CHEVRON             },
+    {"^",    MCC_PUNCTUATOR_CARET                     },
+    {"|",    MCC_PUNCTUATOR_PIPE                      },
+    {"?",    MCC_PUNCTUATOR_QUESTION_MARK             },
+    {":",    MCC_PUNCTUATOR_COLON                     },
+    {";",    MCC_PUNCTUATOR_SEMICOLON                 },
+    {"=",    MCC_PUNCTUATOR_EQUAL                     },
+    {",",    MCC_PUNCTUATOR_COMMA                     },
+    {"#",    MCC_PUNCTUATOR_HASH                      },
+    {NULL,   MCC_PUNCTUATOR_INVALID                   },
+};
+
+static int table_lookup(const struct table_entry* table, const char* str, size_t len) {
+    for (; table->key != NULL; table++) {
+        if ((strncmp(table->key, str, len) == 0) && (strlen(table->key) == len)) {
+            break;
+        }
+    }
+    return table->value;
+}
+
+static int table_caseless_lookup(const struct table_entry* table, const char* str, size_t len) {
+    for (; table->key != NULL; table++) {
+        if ((strncasecmp(table->key, str, len) == 0) && (strlen(table->key) == len)) {
+            break;
+        }
+    }
+    return table->value;
+}
+
+static enum mcc_keyword keyword_lookup(const char* str, size_t len) {
+    return table_lookup(keyword_table, str, len);
+}
+
+static enum mcc_constant_type integer_suffix_lookup(const char* str, size_t len) {
+    return table_caseless_lookup(integer_suffix_table, str, len);
+}
+
+static enum mcc_constant_type float_suffix_lookup(const char* str, size_t len) {
+    return table_caseless_lookup(float_suffix_table, str, len);
+}
+
 static char curr(struct mcc_lexer* lexer) {
     return *lexer->current;
 }
@@ -137,14 +195,6 @@ static char next(struct mcc_lexer* lexer) {
         ++lexer->column;
     }
     return *(++lexer->current);
-}
-
-static char next_n(struct mcc_lexer* lexer, size_t n) {
-    char c = curr(lexer);
-    for (size_t i = 0; i < n; i++) {
-        c = next(lexer);
-    }
-    return c;
 }
 
 static char peek(struct mcc_lexer* lexer) {
@@ -574,14 +624,12 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
     const struct mcc_lexer state = *lexer;
 
     enum mcc_punctuator punctuator;
-    char c = curr(lexer);
 
-    switch (c) {
+    switch (curr(lexer)) {
         case '!':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_BANG_EQUAL;
                     break;
                 default:
@@ -590,10 +638,9 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '#':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '#':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_HASH_HASH;
                     break;
                 default:
@@ -602,11 +649,33 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '%':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
+                case ':':
+                    switch (next(lexer)) {
+                        case '%':
+                            switch (peek(lexer)) {
+                                case ':':
+                                    next(lexer);
+                                    next(lexer);
+                                    punctuator = MCC_PUNCTUATOR_HASH_HASH;
+                                    break;
+                                default:
+                                    punctuator = MCC_PUNCTUATOR_HASH;
+                                    break;
+                            }
+                            break;
+                        default:
+                            punctuator = MCC_PUNCTUATOR_HASH;
+                            break;
+                    }
+                    break;
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_PERCENT_EQUAL;
+                    break;
+                case '>':
+                    next(lexer);
+                    punctuator = MCC_PUNCTUATOR_RIGHT_BRACE;
                     break;
                 default:
                     punctuator = MCC_PUNCTUATOR_PERCENT;
@@ -614,14 +683,13 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '&':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '&':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_AMPERSAND_AMPERSAND;
                     break;
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_AMPERSAND_EQUAL;
                     break;
                 default:
@@ -630,18 +698,17 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '(':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_LEFT_PARENTHESIS;
             break;
         case ')':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_RIGHT_PARENTHESIS;
             break;
         case '*':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_ASTERISK_EQUAL;
                     break;
                 default:
@@ -650,14 +717,13 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '+':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '+':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_PLUS_PLUS;
                     break;
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_PLUS_EQUAL;
                     break;
                 default:
@@ -666,22 +732,21 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case ',':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_COMMA;
             break;
         case '-':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '-':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_MINUS_MINUS;
                     break;
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_MINUS_EQUAL;
                     break;
                 case '>':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_ARROW;
                     break;
                 default:
@@ -690,19 +755,28 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '.':
-            c = next(lexer);
-            if (c == '.' && peek(lexer) == '.') {
-                c          = next_n(lexer, 2);
-                punctuator = MCC_PUNCTUATOR_ELLIPSIS;
-            } else {
-                punctuator = MCC_PUNCTUATOR_DOT;
+            switch (next(lexer)) {
+                case '.':
+                    switch (peek(lexer)) {
+                        case '.':
+                            next(lexer);
+                            next(lexer);
+                            punctuator = MCC_PUNCTUATOR_ELLIPSIS;
+                            break;
+                        default:
+                            punctuator = MCC_PUNCTUATOR_DOT;
+                            break;
+                    }
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_DOT;
+                    break;
             }
             break;
         case '/':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_SLASH_EQUAL;
                     break;
                 default:
@@ -711,21 +785,34 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case ':':
-            c          = next(lexer);
-            punctuator = MCC_PUNCTUATOR_COLON;
+            switch (next(lexer)) {
+                case '>':
+                    next(lexer);
+                    punctuator = MCC_PUNCTUATOR_RIGHT_BRACKET;
+                    break;
+                default:
+                    punctuator = MCC_PUNCTUATOR_COLON;
+                    break;
+            }
             break;
         case ';':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_SEMICOLON;
             break;
         case '<':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
+                case '%':
+                    next(lexer);
+                    punctuator = MCC_PUNCTUATOR_LEFT_BRACE;
+                    break;
+                case ':':
+                    next(lexer);
+                    punctuator = MCC_PUNCTUATOR_LEFT_BRACKET;
+                    break;
                 case '<':
-                    c = next(lexer);
-                    switch (c) {
+                    switch (next(lexer)) {
                         case '=':
-                            c          = next(lexer);
+                            next(lexer);
                             punctuator = MCC_PUNCTUATOR_DOUBLE_LEFT_CHEVRON_EQUAL;
                             break;
                         default:
@@ -734,7 +821,7 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
                     }
                     break;
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_LEFT_CHEVRON_EQUAL;
                     break;
                 default:
@@ -743,10 +830,9 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '=':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_EQUAL_EQUAL;
                     break;
                 default:
@@ -755,13 +841,11 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '>':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '>':
-                    c = next(lexer);
-                    switch (c) {
+                    switch (next(lexer)) {
                         case '=':
-                            c          = next(lexer);
+                            next(lexer);
                             punctuator = MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON_EQUAL;
                             break;
                         default:
@@ -770,7 +854,7 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
                     }
                     break;
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_RIGHT_CHEVRON_EQUAL;
                     break;
                 default:
@@ -779,22 +863,21 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '?':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_QUESTION_MARK;
             break;
         case '[':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_LEFT_BRACKET;
             break;
         case ']':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_RIGHT_BRACKET;
             break;
         case '^':
-            c = next(lexer);
-            switch (c) {
+            switch (next(lexer)) {
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_CARET_EQUAL;
                     break;
                 default:
@@ -803,19 +886,18 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '{':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_LEFT_BRACE;
             break;
         case '|':
-            c = next(lexer);
-            switch (c) {
-                case '|':
-                    c          = next(lexer);
-                    punctuator = MCC_PUNCTUATOR_PIPE_PIPE;
-                    break;
+            switch (next(lexer)) {
                 case '=':
-                    c          = next(lexer);
+                    next(lexer);
                     punctuator = MCC_PUNCTUATOR_PIPE_EQUAL;
+                    break;
+                case '|':
+                    next(lexer);
+                    punctuator = MCC_PUNCTUATOR_PIPE_PIPE;
                     break;
                 default:
                     punctuator = MCC_PUNCTUATOR_PIPE;
@@ -823,11 +905,11 @@ static struct mcc_token scan_punctuator(struct mcc_lexer* lexer) {
             }
             break;
         case '}':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_RIGHT_BRACE;
             break;
         case '~':
-            c          = next(lexer);
+            next(lexer);
             punctuator = MCC_PUNCTUATOR_TILDE;
             break;
         default:

@@ -604,6 +604,15 @@ static void test_punctuators(void) {
     expect_punctuator(">>=", MCC_PUNCTUATOR_DOUBLE_RIGHT_CHEVRON_EQUAL); // not >> =
     expect_punctuator("...", MCC_PUNCTUATOR_ELLIPSIS);                   // not . . .
 
+    TEST_SUITE("Punctuators — Digraphs");
+
+    expect_punctuator("<:", MCC_PUNCTUATOR_LEFT_BRACKET);
+    expect_punctuator(":>", MCC_PUNCTUATOR_RIGHT_BRACKET);
+    expect_punctuator("<%", MCC_PUNCTUATOR_LEFT_BRACE);
+    expect_punctuator("%>", MCC_PUNCTUATOR_RIGHT_BRACE);
+    expect_punctuator("%:", MCC_PUNCTUATOR_HASH);
+    expect_punctuator("%:%:", MCC_PUNCTUATOR_HASH_HASH);
+
     TEST_SUITE("Punctuators — Sequences (first token only)");
 
     expect_punctuator("()", MCC_PUNCTUATOR_LEFT_PARENTHESIS);
@@ -630,6 +639,8 @@ int main(void) {
     test_identifiers();
     test_integer_constants();
     test_float_constants();
+    // test_character_constants();
+    // test_string_literals();
     test_punctuators();
 
     print_results();
